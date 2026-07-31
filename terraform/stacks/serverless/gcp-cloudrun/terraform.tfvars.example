@@ -1,0 +1,20 @@
+project_id = "my-gcp-project"
+region     = "europe-west1"
+zone       = "europe-west1-b"
+
+domain          = "noxus.example.com"
+admin_email     = "admin@example.com"
+whitelabel_logo = ""
+deployment_env  = "prod"
+
+# Platform version. Selects the image tags pulled through the Artifact Registry
+# remote repository.
+vm_version = "0.8.1"
+
+docker_hub_token = "CHANGEME"
+
+# No defaults — supply your own Auth0 tenant's application.
+auth0_domain        = "tenant.eu.auth0.com"
+auth0_api_audience  = "https://api.noxus.example.com"
+auth0_client_id     = "CHANGEME"
+auth0_client_secret = "CHANGEME"

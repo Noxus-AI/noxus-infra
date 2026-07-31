@@ -1,0 +1,154 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
+  "handler": "Microsoft.Azure.CreateUIDef",
+  "version": "0.1.2-preview",
+  "parameters": {
+    "config": {
+      "isWizard": true
+    },
+    "basics": [
+      {}
+    ],
+    "steps": [
+      {
+        "name": "stepBasicSettings",
+        "label": "Basic Settings",
+        "elements": [
+          {
+            "name": "vmName",
+            "type": "Microsoft.Common.TextBox",
+            "label": "VM Name",
+            "defaultValue": "noxus-1",
+            "toolTip": "Enter the name of the virtual machine",
+            "constraints": {
+              "required": true,
+              "regex": "^[A-Za-z0-9-]{6,}$",
+              "validationMessage": "VM name can only contain letters, numbers, and dashes, and must be at least 6 characters."
+            }
+          },
+          {
+            "name": "vmSize",
+            "type": "Microsoft.Common.DropDown",
+            "label": "VM Size",
+            "toolTip": "Select the size of the virtual machine",
+            "defaultValue": "Standard_B4ms",
+            "constraints": {
+              "required": true,
+              "allowedValues": [
+                {
+                  "label": "Standard_B4ms (4 vCPU, 16 GiB RAM)",
+                  "value": "Standard_B4ms"
+                },
+                {
+                  "label": "Standard_B8ms (8 vCPU, 32 GiB RAM)",
+                  "value": "Standard_B8ms"
+                },
+                {
+                  "label": "Standard_B12ms (12 vCPU, 48 GiB RAM)",
+                  "value": "Standard_B12ms"
+                },
+                {
+                  "label": "Standard_B16ms (16 vCPU, 64 GiB RAM)",
+                  "value": "Standard_B16ms"
+                }
+              ]
+            }
+          },
+          {
+            "name": "domain",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Domain Name",
+            "defaultValue": "",
+            "toolTip": "Enter the domain name for the VM (you will need to add a CNAME record and SSL certificate)",
+            "constraints": {
+              "required": true,
+              "regex": "^([a-zA-Z0-9\\-]{1,61}\\.)+[a-zA-Z]{2,}$",
+              "validationMessage": "Please enter a valid domain name (e.g., example.com)"
+            }
+          },
+          {
+            "name": "adminEmail",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Administrator Email",
+            "defaultValue": "",
+            "toolTip": "Enter the administrator's email address",
+            "constraints": {
+              "required": true,
+              "regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+              "validationMessage": "Please enter a valid email address"
+            }
+          }
+        ]
+      },
+      {
+        "name": "stepAdminCredentials",
+        "label": "VM Administrator",
+        "elements": [
+          {
+            "name": "adminUsername",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Admin Username",
+            "defaultValue": "azureuser",
+            "toolTip": "Administrator username for the VM",
+            "constraints": {
+              "required": true,
+              "regex": "^[A-Za-z]{6,}$",
+              "validationMessage": "Admin User Name can only contain letters, and must be at least 6 characters."
+            }
+          },
+          {
+            "name": "adminPassword",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": "Admin Password",
+            "toolTip": "Password for the VM Administrator account",
+            "constraints": {
+              "required": true,
+              "regex": "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{12,}$",
+              "validationMessage": "Password must be at least 12 characters and include an uppercase letter, a lowercase letter, and a digit."
+            }
+          }
+        ]
+      },
+      {
+        "name": "stepDatabaseRedis",
+        "label": "Database",
+        "elements": [
+          {
+            "name": "postgresAdminLogin",
+            "type": "Microsoft.Common.TextBox",
+            "label": "PostgreSQL Admin Username",
+            "defaultValue": "postgres",
+            "toolTip": "Administrator username for PostgreSQL",
+            "constraints": {
+              "required": true,
+              "regex": "^[A-Za-z]{6,}$",
+              "validationMessage": "Postgres Admin Username can only contain letters, and must be at least 6 characters."
+            }
+          },
+          {
+            "name": "postgresAdminPassword",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": "PostgreSQL Admin Password",
+            "toolTip": "Password for PostgreSQL admin",
+            "constraints": {
+              "required": true,
+              "regex": "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{12,}$",
+              "validationMessage": "Password must be at least 12 characters and include an uppercase letter, a lowercase letter, and a digit."
+            }
+          }
+        ]
+      }
+    ],
+    "outputs": {
+      "vmName": "[steps('stepBasicSettings').vmName]",
+      "vmSize": "[steps('stepBasicSettings').vmSize]",
+      "adminUsername": "[steps('stepAdminCredentials').adminUsername]",
+      "adminPassword": "[steps('stepAdminCredentials').adminPassword]",
+      "postgresAdminLogin": "[steps('stepDatabaseRedis').postgresAdminLogin]",
+      "postgresAdminPassword": "[steps('stepDatabaseRedis').postgresAdminPassword]",
+      "domain": "[steps('stepBasicSettings').domain]",
+      "adminEmail": "[steps('stepBasicSettings').adminEmail]",
+      "location": "[location()]"
+    }
+  }
+}

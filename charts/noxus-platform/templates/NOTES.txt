@@ -1,0 +1,44 @@
+Noxus Platform has been deployed!
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+Services deployed:
+{{- if .Values.backend.enabled }}
+  Backend     — {{ .Values.backend.replicaCount }} replica(s){{ if .Values.backend.autoscaling.enabled }} (HPA: {{ .Values.backend.autoscaling.minReplicas }}-{{ .Values.backend.autoscaling.maxReplicas }}){{ end }}
+  {{- range $name, $region := .Values.backend.regions }}
+  Backend/{{ $name }} — {{ $region.replicaCount | default $.Values.backend.replicaCount }} replica(s) (geo)
+  {{- end }}
+{{- end }}
+{{- if .Values.frontend.enabled }}
+  Frontend    — {{ .Values.frontend.replicaCount }} replica(s){{ if .Values.frontend.autoscaling.enabled }} (HPA: {{ .Values.frontend.autoscaling.minReplicas }}-{{ .Values.frontend.autoscaling.maxReplicas }}){{ end }}
+  {{- range $name, $region := .Values.frontend.regions }}
+  Frontend/{{ $name }} — {{ $region.replicaCount | default $.Values.frontend.replicaCount }} replica(s) (geo)
+  {{- end }}
+{{- end }}
+{{- if .Values.worker.enabled }}
+  {{- range $name, $pool := .Values.worker.pools }}
+  {{- if $pool.enabled }}
+  Worker/{{ $name }} — {{ $pool.replicaCount | default 1 }} replica(s), subscribe={{ $pool.workerSubscribe | default "all_but_kb" }}{{ if (default false (dig "autoscaling" "enabled" false $pool)) }} (HPA: {{ $pool.autoscaling.minReplicas | default 1 }}-{{ $pool.autoscaling.maxReplicas | default 10 }}){{ end }}
+  {{- end }}
+  {{- end }}
+{{- end }}
+{{- if .Values.relay.enabled }}
+  Relay       — {{ .Values.relay.replicaCount }} replica(s) (StatefulSet)
+{{- end }}
+
+{{- if .Values.ingress.enabled }}
+
+Ingress:
+  Frontend:  https://{{ .Values.ingress.domain }}
+  Backend:   https://api.{{ .Values.ingress.domain }}
+  Relay:     https://relay.{{ .Values.ingress.domain }}
+{{- end }}
+
+Make sure to configure the following in your values:
+  - env.POSTGRESQL_URL
+  - env.REDIS_URL
+  - env.AUTH0_* credentials
+  - env.BACKEND_URL / FRONTEND_URL / RELAY_URL
+  - ingress.domain
+  - ingress.annotations.alb.ingress.kubernetes.io/certificate-arn

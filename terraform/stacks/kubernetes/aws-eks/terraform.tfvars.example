@@ -1,0 +1,66 @@
+project_name = "noxus"
+environment  = "prod"
+region       = "eu-west-1"
+
+domain            = "noxus.example.com"
+route53_zone_name = "example.com."
+admin_email       = "admin@example.com"
+
+app_version = "0.8.1"
+
+# Grant your operators cluster-admin explicitly rather than relying on whichever
+# identity happened to run the first apply.
+cluster_admin_principal_arns = [
+  "arn:aws:iam::111122223333:role/aws-reserved/sso.amazonaws.com/eu-west-1/AWSReservedSSO_AdministratorAccess_abcdef",
+]
+cluster_endpoint_public_access_cidrs = ["203.0.113.0/24"]
+
+postgres_instance_class = "db.m6g.xlarge"
+redis_node_type         = "cache.m7g.large"
+
+auth0 = {
+  domain       = "tenant.eu.auth0.com"
+  api_audience = "https://api.noxus.example.com"
+  client_id    = "CHANGEME"
+  # Keep the secret out of this file — pass it with
+  #   -var 'auth0={...}'  or a separate *.auto.tfvars that is gitignored.
+  client_secret = "CHANGEME"
+}
+
+# Worker pools and resource sizing are not modelled as variables — pass chart
+# values through directly so you get the chart's full surface.
+extra_values = [
+  <<-YAML
+    backend:
+      replicaCount: 2
+      autoscaling:
+        enabled: true
+        minReplicas: 2
+        maxReplicas: 8
+    frontend:
+      replicaCount: 2
+    worker:
+      pools:
+        default:
+          enabled: true
+          workerSubscribe: all_but_kb
+          autoscaling:
+            enabled: true
+            type: keda
+            minReplicas: 2
+            maxReplicas: 20
+        kb:
+          enabled: true
+          replicaCount: 1
+          workerSubscribe: kb
+          resources:
+            requests: { cpu: "4", memory: "16Gi" }
+            limits: { cpu: "4", memory: "16Gi" }
+          autoscaling:
+            enabled: true
+            type: hpa
+            minReplicas: 1
+            maxReplicas: 5
+            targetCPUUtilizationPercentage: 75
+  YAML
+]

@@ -1,0 +1,777 @@
+nameOverride: ""
+fullnameOverride: ""
+
+# ============================================================
+# KEDA (optional subchart)
+# ============================================================
+# Set keda.enabled: true to install the KEDA operator as part of
+# this release. Required when any worker pool uses autoscaling
+# type: "keda". If you already have KEDA installed in your cluster
+# (e.g. via a separate Helm release), set this to false.
+keda:
+  enabled: true
+
+# -- Shared by Noxus during deployment after ECR setup is complete
+global:
+  imageRegistry: "" # ECR registry URL
+  imagePullSecrets: []
+
+appVersion: "0.8.1"
+
+# -- Service Account
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# -- Platform configuration (non-sensitive)
+env:
+  ADMIN_EMAIL: "" # admin email is used for first bootstrap
+  DEPLOYMENT_ENV: "prod" # local / staging / prod (useful for logs)
+  DEPLOYMENT_NAME: "NOXUS"
+  IS_PROD: "true"
+  LOG_LEVEL: "INFO" # backend/worker console level. TTFT breakdown logs at INFO; DEBUG additionally logs prompt/tool-call content — treat that log stream as sensitive.
+  ON_PREM: "false"
+  SECRETS_SOURCE: "db" # file / env / db
+
+  # -- URLs (set these per deployment according to DNS setup)
+  BACKEND_URL: "" # e.g. https://api.example.com
+  FRONTEND_URL: "" # e.g. https://example.com
+  RELAY_URL: "" # e.g. https://relay.example.com
+  LICENSE_URL: "https://license.noxus.ai"
+  LICENSE_SERVER: "https://license.noxus.ai"
+  # -- Loopback URL the Noxus MCP tools use to reach this backend; a public URL would route out and reject local API keys.
+  NOXUS_BACKEND_URL: "http://localhost:8080"
+  # -- Public URL clients connect to for the Noxus MCP server. Leave
+  # empty in the common case where BACKEND_URL already points at the
+  # backend (the catalog uses `BACKEND_URL + /mcp/`). Set it only when
+  # BACKEND_URL goes through a path-stripping or auth-wrapping proxy
+  # (e.g. `https://example.com/api/backend` fronted by a Next.js Auth0
+  # layer): point this at the dedicated `/mcp` ingress rule the chart
+  # already provisions — typically `https://<your-domain>/mcp/`.
+  MCP_SERVER_URL: ""
+
+  # -- Database (non-sensitive settings)
+  DATABASE: "spot"
+  POSTGRES_POOL_SIZE: "64"
+  POSTGRES_MAX_OVERFLOW: "0"
+  VECTOR_POSTGRES_POOL_SIZE: "128"
+  VECTOR_POSTGRES_MAX_OVERFLOW: "0"
+  PROCRASTINATE_POOL_MIN_SIZE: "0"
+  PROCRASTINATE_POOL_SIZE: "4"
+  # 0 = off. Cap on concurrent async DB checkouts; raise to relieve pool
+  # pressure from wide/nested subflow fan-out (audit nesting before enabling).
+  ASYNC_DB_CHECKOUT_LIMIT: "0"
+  RUN_MIGRATIONS: "1"
+  RUN_BOOTSTRAP: "1"
+
+  # -- Redis (non-sensitive settings)
+  REDIS_PORT: "6379"
+  REDIS_SSL: ""
+  REDIS_SINGLE_DB_ONLY: ""
+
+  # -- Cold Storage (non-sensitive settings)
+  BUCKET_CLIENT: "s3" # gcloud / s3 / minio / ...
+  SPOTFLOW_STORAGE_BUCKET: ""
+  SPOTFLOW_PUBLIC_STORAGE_BUCKET: ""
+  S3_ENDPOINT_URL: "" # leave empty if using S3
+  AWS_REGION: "eu-west-1"
+
+  # -- Observability
+  PROMETHEUS_MULTIPROC_DIR: "/tmp"
+  PROM_REMOTE_WRITE_URL: "" # for PROMETHEUS push systems
+  ENABLE_LLM_OBSERVABILITY: "true"
+  SENTRY_URL: "" # for SENTRY integration
+
+  # -- Misc
+  WHITELABEL_LOGO: ""
+  OAUTHLIB_INSECURE_TRANSPORT: "0"
+  CACHE_LOCATION: "redis"
+  DEFAULT_FROM_EMAIL: "noreply@noxus.ai"
+
+# -- Additional non-sensitive env vars to merge (overrides above)
+extraEnv: {}
+
+# ============================================================
+# Secrets
+# ============================================================
+# These are stored in a separate K8s Secret and merged into the
+# pod env alongside the config above. Keep these out of version
+# control — use --set or a sealed/encrypted values file.
+secrets:
+  # -- Auth0
+  AUTH0_DOMAIN: ""
+  AUTH0_BASE_URL: ""
+  AUTH0_ISSUER_BASE_URL: ""
+  AUTH0_API_AUDIENCE: ""
+  AUTH0_CLIENT_ID: ""
+  AUTH0_CLIENT_SECRET: ""
+  AUTH0_SECRET: ""
+  AUTH0_MGMT_CLIENT_ID: ""
+  AUTH0_MGMT_CLIENT_SECRET: ""
+
+  # -- Database connection strings
+  POSTGRESQL_URL: "" # user:password@host:5432
+  VECTOR_POSTGRESQL_URL: "" # user:password@host:5432
+  PROCRASTINATE_POSTGRESQL_URL: "" # optional override; blank reuses POSTGRESQL_URL
+  LICENSE_POSTGRESQL_URL: ""
+
+  # -- Redis credentials
+  REDIS_URL: "" # host (without port)
+  REDIS_PASSWORD: ""
+  REDIS_USER: ""
+  CELERY_BROKER_URL_OVERRIDE: ""
+
+  # -- S3 / storage credentials
+  S3_ACCESS_KEY_ID: ""
+  S3_SECRET_ACCESS_KEY: ""
+
+  # -- Observability credentials
+  PROM_REMOTE_WRITE_USERNAME: ""
+  PROM_REMOTE_WRITE_PASSWORD: ""
+
+  # -- Integration keys
+  NANGO_PUBLIC_KEY: ""
+  NANGO_SECRET_KEY: ""
+
+pgbouncer:
+  enabled: false
+  # -- Use an existing PgBouncer deployment instead of deploying one with this chart.
+  # Set enabled=false and provide hostname_override.
+  managed_externally: false
+  # -- Hostname of the externally managed PgBouncer service.
+  # Required when managed_externally=true.
+  hostname_override: ""
+  image: edoburu/pgbouncer:v1.24.1-p1
+  replicaCount: 1
+  port: 6432
+  authType: plain
+  poolMode: transaction
+  maxClientConn: 10000
+  defaultPoolSize: 128
+  reservePoolSize: 32
+  databasePoolSizes:
+    postgres: 16
+    app: 128
+    vectors: 114
+    license: 32
+    procrastinate: 100
+  maxPreparedStatements: 200
+  ignoreStartupParameters: "extra_float_digits"
+  backend:
+    port: 5432
+    # PgBouncer backend host and auth are parsed from POSTGRESQL_URL.
+  # -- Existing Secret containing the upstream POSTGRESQL_URL.
+  # Required when pgbouncer.enabled=true or pgbouncer.managed_externally=true.
+  # The generated app env Secret points POSTGRESQL_URL and VECTOR_POSTGRESQL_URL
+  # at the managed or externally managed PgBouncer service.
+  postgresqlUrlSecret:
+    name: ""
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+# -- Env vars to EXCLUDE from relay secret (relay doesn't need Slack credentials)
+relayExcludeKeys:
+  - SLACK_CLIENT_ID
+  - SLACK_CLIENT_SECRET
+
+# -- Extra env vars only for the frontend
+frontendExtraEnv:
+  HOSTNAME: "0.0.0.0"
+
+# ============================================================
+# Backend
+# ============================================================
+backend:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: noxusai/noxus-np
+    tag: "" # defaults to spotflow-backend-<appVersion>
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+
+  resources:
+    requests:
+      cpu: "2"
+      memory: "6Gi"
+    limits:
+      cpu: "2"
+      memory: "6Gi"
+
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 85
+
+  probes:
+    startup:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      failureThreshold: 30
+    liveness:
+      httpGet:
+        path: /status/health
+        port: 8080
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 10
+      failureThreshold: 5
+    readiness:
+      httpGet:
+        path: /status/health
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+
+  podDisruptionBudget:
+    enabled: true
+    # maxUnavailable: 1    # used when replicaCount > 1
+    # minAvailable: 1      # used when replicaCount == 1
+
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                    - backend
+            topologyKey: kubernetes.io/hostname
+
+  # -- Spread pods across availability zones for geo-resilience
+  topologySpreadConstraints: []
+  #   - maxSkew: 1
+  #     topologyKey: topology.kubernetes.io/zone
+  #     whenUnsatisfiable: ScheduleAnyway
+  #     labelSelector:
+  #       matchLabels:
+  #         app: backend
+
+  nodeSelector: {}
+  tolerations: []
+  terminationGracePeriodSeconds: 30
+
+  # -- For totally geo-replicated deployments
+  # Each region creates an additional Deployment using the same "app: backend"
+  # label, so the main Service routes traffic to pods across all regions.
+  # Unset fields inherit from the parent backend config.
+  regions: {}
+  #   eu-west-1a:
+  #     replicaCount: 2
+  #     nodeSelector:
+  #       topology.kubernetes.io/zone: eu-west-1a
+  #   eu-west-1b:
+  #     replicaCount: 2
+  #     nodeSelector:
+  #       topology.kubernetes.io/zone: eu-west-1b
+  #     resources:
+  #       requests:
+  #         cpu: "2"
+  #         memory: "8Gi"
+  #       limits:
+  #         cpu: "2"
+  #         memory: "8Gi"
+  #     autoscaling:
+  #       enabled: true
+  #       minReplicas: 1
+  #       maxReplicas: 4
+  #       targetCPUUtilizationPercentage: 80
+
+# ============================================================
+# Frontend
+# ============================================================
+
+frontend:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: noxusai/noxus-np
+    tag: "" # defaults to spotflow-frontend-<appVersion>
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+
+  resources:
+    requests:
+      cpu: "2"
+      memory: "4Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 85
+
+  probes:
+    startup:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      failureThreshold: 30
+    liveness:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 10
+      failureThreshold: 5
+    readiness:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+
+  podDisruptionBudget:
+    enabled: true
+
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                    - frontend
+            topologyKey: kubernetes.io/hostname
+
+  # -- Spread pods across availability zones for geo-resilience
+  topologySpreadConstraints: []
+  #   - maxSkew: 1
+  #     topologyKey: topology.kubernetes.io/zone
+  #     whenUnsatisfiable: ScheduleAnyway
+  #     labelSelector:
+  #       matchLabels:
+  #         app: frontend
+
+  nodeSelector: {}
+  tolerations: []
+  terminationGracePeriodSeconds: 30
+
+  # -- Geo-replicated deployments (same pattern as backend.regions)
+  regions: {}
+
+# ============================================================
+# Worker Pools
+# ============================================================
+# Each pool creates its own Deployment, Service, HPA, and PDB.
+# Pools share the base image, probes, and pod annotations.
+# Each pool sets its own WORKER_SUBSCRIBE via container env override.
+worker:
+  enabled: true
+
+  # -- Shared defaults across all pools
+  image:
+    repository: noxusai/noxus-np
+    tag: "" # defaults to spotflow-worker-<appVersion>
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+
+  probes:
+    startup:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      failureThreshold: 30
+    liveness:
+      httpGet:
+        path: /status/health
+        port: 8080
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 10
+      failureThreshold: 5
+    readiness:
+      httpGet:
+        path: /status/health
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+
+  terminationGracePeriodSeconds: 600
+
+  # -- KEDA configuration (shared across all pools using type: keda)
+  # Requires KEDA operator installed in the cluster (https://keda.sh)
+  keda:
+    # Format: postgresql://user:password@host:5432/dbname
+    postgresConnectionString: ""
+    # -- Or reference an existing secret (key must be "connectionString")
+    existingPostgresSecret: ""
+    # -- Polling interval in seconds for the queue size
+    pollingInterval: 15
+    # -- SQL query that returns current queue depth
+    query: "SELECT COALESCE(COUNT(*), 0) FROM runs WHERE status IN ('Queued', 'Running') AND created_at > NOW() - '1 hour'::interval;"
+    # -- Target value: KEDA scales to keep (query result / replicas) near this
+    targetQueryValue: "10"
+    # -- Optional cron trigger: ensure min replicas during business hours
+    cronTrigger:
+      enabled: true
+      timezone: "UTC"
+      start: "0 9 * * *"
+      end: "0 20 * * *"
+      desiredReplicas: 1
+
+  # -- Worker pools definition
+  # Each pool creates a separate Deployment with its own scaling config.
+  # WORKER_SUBSCRIBE options: all / all_but_kb / chat / flow / kb
+  # workerSubscribeWorkspaces: comma-separated workspace IDs (empty = all workspaces)
+  # workerUnsubscribeWorkspaces: comma-separated workspace IDs to EXCLUDE
+  #   (empty = exclude none). Lets a catch-all pool run everything (including
+  #   maintenance/system jobs) while leaving these workspaces to dedicated pools.
+  # envSecretRef: name of an additional K8s Secret to layer on top of the shared app-env
+  pools:
+    default:
+      enabled: true
+      replicaCount: 1
+      workerSubscribe: "all_but_kb"
+      # workerSubscribeWorkspaces: ""
+      # workerUnsubscribeWorkspaces: ""
+      # envSecretRef: ""
+      resources:
+        requests:
+          cpu: "2"
+          memory: "12Gi"
+        limits:
+          cpu: "2"
+          memory: "12Gi"
+      autoscaling:
+        enabled: true
+        # -- type: "hpa" for standard CPU/memory HPA, "keda" for queue-based KEDA
+        type: "keda"
+        minReplicas: 1
+        maxReplicas: 10
+        # -- Standard HPA metrics (only used when type: hpa)
+        targetCPUUtilizationPercentage: 80
+        targetMemoryUtilizationPercentage: 85
+        # -- Scale-down behavior (used by both hpa and keda)
+        behavior:
+          scaleDown:
+            stabilizationWindowSeconds: 300
+            policies:
+              - type: Percent
+                value: 10
+                periodSeconds: 60
+      podDisruptionBudget:
+        enabled: true
+        maxUnavailable: 1
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - worker
+                topologyKey: kubernetes.io/hostname
+      topologySpreadConstraints: []
+      nodeSelector: {}
+      tolerations: []
+
+    # -- Example: dedicated knowledge-base pool with standard HPA
+    # kb:
+    #   enabled: false
+    #   replicaCount: 1
+    #   workerSubscribe: "kb"
+    #   workerSubscribeWorkspaces: ""    # empty = all workspaces
+    #   envSecretRef: ""                 # optional per-pool secret override
+    #   resources:
+    #     requests:
+    #       cpu: "4"
+    #       memory: "16Gi"
+    #     limits:
+    #       cpu: "4"
+    #       memory: "16Gi"
+    #   autoscaling:
+    #     enabled: true
+    #     type: "hpa"
+    #     minReplicas: 1
+    #     maxReplicas: 5
+    #     targetCPUUtilizationPercentage: 75
+    #   podDisruptionBudget:
+    #     enabled: false
+    #   affinity: {}
+    #   topologySpreadConstraints: []
+    #   nodeSelector: {}
+    #   tolerations: []
+
+    # -- Example: dedicated chat pool with KEDA (custom query)
+    # chat:
+    #   enabled: false
+    #   replicaCount: 2
+    #   workerSubscribe: "chat"
+    #   resources:
+    #     requests:
+    #       cpu: "4"
+    #       memory: "16Gi"
+    #     limits:
+    #       cpu: "4"
+    #       memory: "16Gi"
+    #   autoscaling:
+    #     enabled: true
+    #     type: "keda"
+    #     minReplicas: 0
+    #     maxReplicas: 5
+    #     keda:
+    #       query: "SELECT COUNT(*) FROM runs WHERE status IN ('Queued') AND queue_type = 'chat';"
+    #       targetQueryValue: "5"
+    #   podDisruptionBudget:
+    #     enabled: true
+    #     maxUnavailable: 1
+    #   affinity: {}
+    #   topologySpreadConstraints: []
+    #   nodeSelector: {}
+    #   tolerations: []
+
+# ============================================================
+# Relay (optional - handles Slack, Email, Teams webhooks)
+# Enable only if you need external integration event handlers.
+# Most deployments do NOT need this.
+# ============================================================
+relay:
+  enabled: false
+  replicaCount: 1
+
+  image:
+    repository: noxusai/noxus-np
+    tag: "" # defaults to spotflow-relays-<appVersion>
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+
+  resources:
+    requests:
+      cpu: "1"
+      memory: "1Gi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 85
+
+  probes:
+    startup:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      failureThreshold: 30
+    liveness:
+      httpGet:
+        path: /status/health
+        port: 8080
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 10
+      failureThreshold: 5
+    readiness:
+      httpGet:
+        path: /status/health
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                    - relay
+            topologyKey: kubernetes.io/hostname
+
+  nodeSelector: {}
+  tolerations: []
+  terminationGracePeriodSeconds: 30
+
+# ============================================================
+# Ingress
+# - We know the ALB already exists, this is just an example
+# ============================================================
+
+ingress:
+  enabled: true
+  className: "alb"
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/certificate-arn: "" # ACM certificate ARN
+
+  # -- Domain configuration
+  domain: "" # e.g. app.example.com
+  # Sub-domains are derived automatically:
+  #   api.<domain>    -> backend
+  #   relay.<domain>  -> relay
+  #   <domain>        -> frontend
+
+  tls: []
+  #   - secretName: noxus-tls
+  #     hosts:
+  #       - app.example.com
+
+# ============================================================
+# Sandbox (Agent Sandbox - Syd isolated execution)
+#
+# UPGRADE NOTE: plugins now execute inside this sandbox (the standalone
+# plugin-server is gone). SANDBOX_MANAGER_URL — the plugin system's switch —
+# is only injected into the backend/worker when this is enabled, so a
+# deployment that previously ran plugins via pluginServer.enabled=true MUST
+# set sandbox.enabled=true or its plugin nodes/triggers will not load.
+# ============================================================
+sandbox:
+  enabled: false
+  # Remote Run Code backend used by worker pods when enabled: "syd" (default)
+  # executes through the agentsandbox manager. This does not change the sandbox
+  # manager pod security context.
+  backend: syd
+  # Worker-local Run Code backend, used when the remote sandbox is off or
+  # unhealthy: "deno" (worker-local Deno/Pyodide), "subprocess" (worker-local
+  # Python, weaker isolation), or "none" (no local execution). Empty selects the
+  # per-mode default: "none" when enabled (remote-only, no standby Deno worker),
+  # "deno" when disabled.
+  localBackend: ""
+  # "syd" (full syscall+network jail, needs SYS_PTRACE) or "minimal"
+  # (plain chroot, SYS_ADMIN only, egress via NetworkPolicy). Applies when
+  # backend is "syd".
+  jail: syd
+  replicaCount: 1
+  terminationGracePeriodSeconds: 30
+
+  image:
+    repository: noxusai/noxus-np
+    pullPolicy: IfNotPresent
+    tag: "" # defaults to agentsandbox-<appVersion>
+
+  service:
+    type: ClusterIP
+    port: 8000
+    targetPort: 8000
+
+  resources:
+    requests:
+      cpu: "1"
+      memory: "2Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+
+  storage: "10Gi"
+  shmSize: "512Mi"
+
+  # FS mode: CoW state is periodically synced to object storage (uses the
+  # BUCKET_CLIENT / SPOTFLOW_STORAGE_BUCKET / credentials inherited via the
+  # app-env secret) so the pod can run against an ephemeral emptyDir volume.
+  env:
+    SANDBOX_FS_ENABLED: "true"
+    SANDBOX_FS_PREFIX: "sandboxes"
+    SANDBOX_FS_SYNC_INTERVAL: "300"
+
+  probes:
+    startup:
+      httpGet:
+        path: /health
+        port: http
+      failureThreshold: 30
+      periodSeconds: 5
+    liveness:
+      httpGet:
+        path: /health
+        port: http
+      periodSeconds: 15
+      failureThreshold: 3
+    readiness:
+      httpGet:
+        path: /health
+        port: http
+      periodSeconds: 10
+      failureThreshold: 3
+
+  podAnnotations: {}
+  affinity: {}
+  nodeSelector: {}
+  tolerations: []
+
+# The MCP server is mounted inside the backend FastAPI app (see
+# spotflow_backend.main) — no separate Deployment/Service is needed.
+# The ingress routes `/mcp` on the main domain straight to the backend
+# Service; the catalog entry derives its URL from env.BACKEND_URL.
+

@@ -1,0 +1,34 @@
+# Terraform / OpenTofu
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Variable files hold credentials. Only *.example files are tracked.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+backend.hcl
+
+# Helm
+charts/*/charts/
+charts/*/Chart.lock
+*.tgz
+
+# Local values files, which hold secrets by design
+values-local*.yaml
+values-secret*.yaml
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

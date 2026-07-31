@@ -1,0 +1,29 @@
+{{- if .Values.worker.enabled }}
+{{- $fullName := include "noxus-platform.fullname" . }}
+{{- $labels := include "noxus-platform.labels" . }}
+{{- $worker := .Values.worker }}
+{{- range $poolName, $pool := .Values.worker.pools }}
+{{- if $pool.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}-worker-{{ $poolName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app: worker
+    noxus.ai/pool: {{ $poolName }}
+spec:
+  type: {{ $worker.service.type }}
+  selector:
+    app: worker
+    noxus.ai/pool: {{ $poolName }}
+  ports:
+    - port: {{ $worker.service.port }}
+      targetPort: {{ $worker.service.targetPort }}
+      protocol: TCP
+      name: http
+{{- end }}
+{{- end }}
+{{- end }}

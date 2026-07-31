@@ -1,0 +1,48 @@
+{{- if .Values.worker.enabled }}
+{{- $fullName := include "noxus-platform.fullname" . }}
+{{- $labels := include "noxus-platform.labels" . }}
+{{- range $poolName, $pool := .Values.worker.pools }}
+{{- $autoEnabled := default false (dig "autoscaling" "enabled" false $pool) }}
+{{- $autoType := default "hpa" (dig "autoscaling" "type" "hpa" $pool) }}
+{{- if and $pool.enabled $autoEnabled (eq $autoType "hpa") }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $fullName }}-worker-{{ $poolName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app: worker
+    noxus.ai/pool: {{ $poolName }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $fullName }}-worker-{{ $poolName }}
+  minReplicas: {{ $pool.autoscaling.minReplicas | default 1 }}
+  maxReplicas: {{ $pool.autoscaling.maxReplicas | default 10 }}
+  metrics:
+    {{- if $pool.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $pool.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if $pool.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ $pool.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+  {{- with $pool.autoscaling.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

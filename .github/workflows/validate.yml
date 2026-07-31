@@ -1,0 +1,115 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform:
+    name: terraform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.8.8
+
+      - name: fmt
+        run: tofu fmt -check -recursive terraform/
+
+      - name: validate every module and stack
+        run: |
+          set -euo pipefail
+          failed=0
+          # Each directory is initialised without a backend so no cloud
+          # credentials are needed; validate still type-checks providers.
+          for dir in terraform/modules/*/*/ terraform/stacks/*/*/; do
+            [ -n "$(find "$dir" -maxdepth 1 -name '*.tf' -print -quit)" ] || continue
+            echo "::group::$dir"
+            if ! (cd "$dir" && tofu init -backend=false -input=false >/dev/null && tofu validate); then
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$failed"
+
+  helm:
+    name: helm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: dependencies
+        run: helm dependency update charts/noxus-platform
+
+      - name: lint
+        run: helm lint charts/noxus-platform -f charts/noxus-platform/ci/minimal-values.yaml
+
+      - name: render
+        run: |
+          set -euo pipefail
+          for values in charts/noxus-platform/ci/*.yaml; do
+            echo "::group::$values"
+            helm template noxus charts/noxus-platform -f "$values" > /dev/null
+            echo "::endgroup::"
+          done
+
+      - name: render cloud examples
+        run: |
+          set -euo pipefail
+          for values in charts/noxus-platform/values-*.example.yaml; do
+            echo "::group::$values"
+            # pgbouncer is off here: its templates `lookup` a live Secret and
+            # cannot render without a cluster.
+            helm template noxus charts/noxus-platform \
+              -f "$values" \
+              --set pgbouncer.enabled=false \
+              --set keda.enabled=false > /dev/null
+            echo "::endgroup::"
+          done
+
+  scripts:
+    name: scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck scripts/*.sh
+
+  secrets:
+    name: no committed secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: scan working tree
+        run: |
+          set -euo pipefail
+          # Credentials have been committed here before. This catches the shapes
+          # that were found, and any tfvars file that should have been ignored.
+          patterns='dckr_[po]at_|AUTH0_CLIENT_SECRET=[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
+          if grep -rEn "$patterns" --exclude-dir=.git . ; then
+            echo "::error::possible credential committed"
+            exit 1
+          fi
+          if git ls-files '*.tfvars' | grep -q .; then
+            echo "::error::a .tfvars file is tracked; only *.tfvars.example belongs in git"
+            git ls-files '*.tfvars'
+            exit 1
+          fi

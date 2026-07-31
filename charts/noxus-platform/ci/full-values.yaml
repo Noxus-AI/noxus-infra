@@ -1,0 +1,83 @@
+# Every optional component on at once — relay, sandbox, pgbouncer, multi-pool
+# workers, KEDA scaling, and geo regions. Catches template regressions that the
+# minimal input would not reach.
+env:
+  ADMIN_EMAIL: ci@example.com
+  FRONTEND_URL: https://ci.example.com
+  BACKEND_URL: https://api.ci.example.com
+  RELAY_URL: https://relay.ci.example.com
+
+secrets:
+  POSTGRESQL_URL: "postgres:pw@db:5432"
+  VECTOR_POSTGRESQL_URL: "postgres:pw@db:5432"
+  REDIS_URL: "redis"
+  AUTH0_DOMAIN: ci.eu.auth0.com
+  AUTH0_CLIENT_ID: ci
+  AUTH0_CLIENT_SECRET: ci
+  AUTH0_SECRET: ci
+
+ingress:
+  enabled: true
+  className: alb
+  domain: ci.example.com
+
+# pgbouncer is deliberately left off here. Its templates call `lookup` to read the
+# upstream POSTGRESQL_URL out of a live Secret, so they cannot render offline —
+# `helm template` has no API server to look it up in. Exercise pgbouncer against a
+# real cluster (kind is enough) rather than in the offline render check.
+pgbouncer:
+  enabled: false
+
+relay:
+  enabled: true
+
+sandbox:
+  enabled: true
+
+backend:
+  autoscaling:
+    enabled: true
+  regions:
+    zone-a:
+      replicaCount: 2
+      nodeSelector:
+        topology.kubernetes.io/zone: eu-west-1a
+
+frontend:
+  regions:
+    zone-a:
+      replicaCount: 2
+      nodeSelector:
+        topology.kubernetes.io/zone: eu-west-1a
+
+worker:
+  keda:
+    postgresConnectionString: "postgresql://postgres:pw@db:5432/spot"
+  pools:
+    default:
+      enabled: true
+      workerSubscribe: all_but_kb
+      autoscaling:
+        enabled: true
+        type: keda
+        minReplicas: 1
+        maxReplicas: 10
+    kb:
+      enabled: true
+      replicaCount: 1
+      workerSubscribe: kb
+      resources:
+        requests: { cpu: "1", memory: "2Gi" }
+        limits: { cpu: "1", memory: "2Gi" }
+      autoscaling:
+        enabled: true
+        type: hpa
+        minReplicas: 1
+        maxReplicas: 3
+        targetCPUUtilizationPercentage: 75
+      podDisruptionBudget:
+        enabled: true
+        maxUnavailable: 1
+
+keda:
+  enabled: false

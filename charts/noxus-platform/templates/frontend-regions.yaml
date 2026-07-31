@@ -1,0 +1,126 @@
+{{- if .Values.frontend.enabled }}
+{{- $fullName := include "noxus-platform.fullname" . }}
+{{- $labels := include "noxus-platform.labels" . }}
+{{- $selectorLabels := include "noxus-platform.selectorLabels" . }}
+{{- $secretChecksum := include "noxus-platform.secretChecksum" . }}
+{{- $saName := include "noxus-platform.serviceAccountName" . }}
+{{- $global := .Values.global }}
+{{- $frontend := .Values.frontend }}
+{{- $appVersion := .Values.appVersion }}
+{{- range $regionName, $region := .Values.frontend.regions }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullName }}-frontend-{{ $regionName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app: frontend
+    noxus.ai/region: {{ $regionName }}
+spec:
+  {{- $autoEnabled := default false (dig "autoscaling" "enabled" false $region) }}
+  {{- if not $autoEnabled }}
+  replicas: {{ $region.replicaCount | default $frontend.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: frontend
+      noxus.ai/region: {{ $regionName }}
+  template:
+    metadata:
+      labels:
+        app: frontend
+        noxus.ai/region: {{ $regionName }}
+        {{- $selectorLabels | nindent 8 }}
+      annotations:
+        {{- $secretChecksum | nindent 8 }}
+        {{- with $frontend.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ $saName }}
+      {{- with $global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (default $frontend.affinity $region.affinity) }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (default $frontend.topologySpreadConstraints $region.topologySpreadConstraints) }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (default $frontend.nodeSelector $region.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (default $frontend.tolerations $region.tolerations) }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ $frontend.terminationGracePeriodSeconds }}
+      containers:
+        - name: frontend
+          image: {{ include "noxus-platform.image" (dict "registry" $global.imageRegistry "repository" $frontend.image.repository "tag" (default (printf "spotflow-frontend-%s" $appVersion) $frontend.image.tag)) }}
+          imagePullPolicy: {{ $frontend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $frontend.service.targetPort }}
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ $fullName }}-frontend-env
+          resources:
+            {{- toYaml (default $frontend.resources $region.resources) | nindent 12 }}
+          {{- with $frontend.probes.startup }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $frontend.probes.liveness }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $frontend.probes.readiness }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+{{- if (default false (dig "autoscaling" "enabled" false $region)) }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $fullName }}-frontend-{{ $regionName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app: frontend
+    noxus.ai/region: {{ $regionName }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $fullName }}-frontend-{{ $regionName }}
+  minReplicas: {{ $region.autoscaling.minReplicas | default 1 }}
+  maxReplicas: {{ $region.autoscaling.maxReplicas | default 3 }}
+  metrics:
+    {{- if $region.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $region.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if $region.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ $region.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

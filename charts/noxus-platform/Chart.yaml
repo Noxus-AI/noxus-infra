@@ -1,0 +1,15 @@
+apiVersion: v2
+name: noxus-platform
+description: Helm chart for Noxus AI Platform single workspace deployment
+type: application
+version: 0.2.1
+appVersion: "0.8.1"
+maintainers:
+  - name: NoxusAI
+    url: https://noxus.ai
+
+dependencies:
+  - name: keda
+    version: "2.16.1"
+    repository: https://kedacore.github.io/charts
+    condition: keda.enabled

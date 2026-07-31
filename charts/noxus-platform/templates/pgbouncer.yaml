@@ -1,0 +1,156 @@
+{{- if .Values.pgbouncer.enabled }}
+{{- $name := include "noxus-platform.pgbouncerName" . }}
+{{- $pgb := .Values.pgbouncer }}
+{{- $backend := $pgb.backend }}
+{{- $postgresqlUrlSecretName := required "pgbouncer.postgresqlUrlSecret.name is required when pgbouncer.enabled=true" $pgb.postgresqlUrlSecret.name }}
+{{- $sourceSecret := default dict (lookup "v1" "Secret" .Release.Namespace $postgresqlUrlSecretName) }}
+{{- $_ := required (printf "Secret %q is required in namespace %q when pgbouncer.enabled=true" $postgresqlUrlSecretName .Release.Namespace) (dig "metadata" "name" "" $sourceSecret) }}
+{{- $sourceSecretData := default dict $sourceSecret.data }}
+{{- $postgresURL := required (printf "Secret %q must contain key POSTGRESQL_URL" $postgresqlUrlSecretName) (get $sourceSecretData "POSTGRESQL_URL" | b64dec) }}
+{{- $backendUser := required "POSTGRESQL_URL must include a username when pgbouncer.enabled=true" (include "noxus-platform.postgresUrlUser" $postgresURL) }}
+{{- $backendPassword := required "POSTGRESQL_URL must include a password when pgbouncer.enabled=true" (include "noxus-platform.postgresUrlPassword" $postgresURL) }}
+{{- $backendHost := required "POSTGRESQL_URL must include a host when pgbouncer.enabled=true" (include "noxus-platform.postgresUrlHost" $postgresURL) }}
+{{- $userlistUser := $backendUser | replace "\\" "\\\\" | replace "\"" "\\\"" }}
+{{- $userlistPassword := $backendPassword | replace "\\" "\\\\" | replace "\"" "\\\"" }}
+{{- $config := merge (default dict .Values.extraEnv) .Values.env }}
+{{- $creds := default dict .Values.secrets }}
+{{- $allEnv := merge $creds $config }}
+{{- $appDatabase := default "spot" .Values.env.DATABASE }}
+{{- $userdataDatabase := default (printf "%s_userdata" $appDatabase) (index $allEnv "USERDATA_DATABASE") }}
+{{- $databasePoolSizes := default dict $pgb.databasePoolSizes }}
+{{- $postgresPoolSize := default 16 (get $databasePoolSizes "postgres") }}
+{{- $appPoolSize := default $pgb.defaultPoolSize (get $databasePoolSizes "app") }}
+{{- $userdataPoolSize := default 32 (get $databasePoolSizes "userdata") }}
+{{- $vectorPoolSize := default 114 (get $databasePoolSizes "vectors") }}
+{{- $licensePoolSize := default 32 (get $databasePoolSizes "license") }}
+{{- $procrastinatePoolSize := default 100 (get $databasePoolSizes "procrastinate") }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "noxus-platform.labels" . | nindent 4 }}
+    app: pgbouncer
+data:
+  pgbouncer.ini: |
+    [databases]
+    postgres = host={{ $backendHost }} port={{ $backend.port | int }} dbname=postgres pool_size={{ $postgresPoolSize | int }}
+    {{ $appDatabase }} = host={{ $backendHost }} port={{ $backend.port | int }} dbname={{ $appDatabase }} pool_size={{ $appPoolSize | int }}
+    {{ $userdataDatabase }} = host={{ $backendHost }} port={{ $backend.port | int }} dbname={{ $userdataDatabase }} pool_size={{ $userdataPoolSize | int }}
+    vectors = host={{ $backendHost }} port={{ $backend.port | int }} dbname=vectors pool_size={{ $vectorPoolSize | int }}
+    license = host={{ $backendHost }} port={{ $backend.port | int }} dbname=license pool_size={{ $licensePoolSize | int }}
+    procrastinate = host={{ $backendHost }} port={{ $backend.port | int }} dbname=procrastinate pool_size={{ $procrastinatePoolSize | int }} pool_mode=session
+
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = {{ $pgb.port | int }}
+    auth_type = {{ $pgb.authType }}
+    auth_file = /etc/pgbouncer/userlist.txt
+    pool_mode = {{ $pgb.poolMode }}
+    max_client_conn = {{ $pgb.maxClientConn | int }}
+    default_pool_size = {{ $pgb.defaultPoolSize | int }}
+    reserve_pool_size = {{ $pgb.reservePoolSize | int }}
+    max_prepared_statements = {{ $pgb.maxPreparedStatements | int }}
+    ignore_startup_parameters = {{ $pgb.ignoreStartupParameters }}
+    server_reset_query = DISCARD ALL
+    admin_users = {{ $backendUser }}
+    stats_users = {{ $backendUser }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}-auth
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "noxus-platform.labels" . | nindent 4 }}
+    app: pgbouncer
+type: Opaque
+stringData:
+  userlist.txt: |
+    "{{ $userlistUser }}" "{{ $userlistPassword }}"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "noxus-platform.labels" . | nindent 4 }}
+    app: pgbouncer
+spec:
+  replicas: {{ $pgb.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app: pgbouncer
+      {{- include "noxus-platform.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: pgbouncer
+        {{- include "noxus-platform.selectorLabels" . | nindent 8 }}
+      annotations:
+        {{- include "noxus-platform.secretChecksum" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "noxus-platform.serviceAccountName" . }}
+      containers:
+        - name: pgbouncer
+          image: {{ $pgb.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: pgbouncer
+              containerPort: {{ $pgb.port | int }}
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: pgbouncer
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: pgbouncer
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            {{- toYaml $pgb.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/pgbouncer/pgbouncer.ini
+              subPath: pgbouncer.ini
+              readOnly: true
+            - name: auth
+              mountPath: /etc/pgbouncer/userlist.txt
+              subPath: userlist.txt
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $name }}
+        - name: auth
+          secret:
+            secretName: {{ $name }}-auth
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "noxus-platform.labels" . | nindent 4 }}
+    app: pgbouncer
+spec:
+  type: ClusterIP
+  selector:
+    app: pgbouncer
+    {{- include "noxus-platform.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: pgbouncer
+      port: {{ $pgb.port | int }}
+      targetPort: pgbouncer
+      protocol: TCP
+{{- end }}

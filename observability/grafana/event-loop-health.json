@@ -1,0 +1,953 @@
+{
+ "uid": "noxus-eventloop-health",
+ "title": "Noxus \u2014 Event-loop health",
+ "tags": [
+  "noxus",
+  "eventloop",
+  "latency",
+  "debug"
+ ],
+ "timezone": "browser",
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "30s",
+ "time": {
+  "from": "now-6h",
+  "to": "now"
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "datasource",
+    "type": "datasource",
+    "query": "prometheus",
+    "label": "Data source",
+    "current": {},
+    "hide": 0
+   }
+  ]
+ },
+ "panels": [
+  {
+   "type": "row",
+   "title": "Event-loop lag",
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "type": "stat",
+   "title": "p99 lag \u2014 backend",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 0,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.99, sum(rate(noxus_eventloop_lag_seconds_bucket{service=\"backend\"}[$__rate_interval])) by (le))",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   }
+  },
+  {
+   "type": "stat",
+   "title": "p99 lag \u2014 worker",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 4,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.99, sum(rate(noxus_eventloop_lag_seconds_bucket{service=\"worker\"}[$__rate_interval])) by (le))",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   }
+  },
+  {
+   "type": "stat",
+   "title": "p99 lag \u2014 relays",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 8,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.99, sum(rate(noxus_eventloop_lag_seconds_bucket{service=\"relays\"}[$__rate_interval])) by (le))",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Blocked s/s (all services)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 12,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "sum(rate(noxus_eventloop_blocked_seconds_total[$__rate_interval]))",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "description": "Watchdog-attributed blocked seconds per second. >0 means some loop is stalled >0.5s right now."
+  },
+  {
+   "type": "stat",
+   "title": "Watchdog top culprit",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 8,
+    "x": 16,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "topk(1, sum(rate(noxus_eventloop_blocked_seconds_total[$__rate_interval])) by (culprit))",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Lag p99 by service",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 5
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.99, sum(rate(noxus_eventloop_lag_seconds_bucket[$__rate_interval])) by (le, service))",
+     "legendFormat": "{{service}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Lag p95 by service",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 5
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.95, sum(rate(noxus_eventloop_lag_seconds_bucket[$__rate_interval])) by (le, service))",
+     "legendFormat": "{{service}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Lag p50 by service",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 5
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.5, sum(rate(noxus_eventloop_lag_seconds_bucket[$__rate_interval])) by (le, service))",
+     "legendFormat": "{{service}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   }
+  },
+  {
+   "type": "heatmap",
+   "title": "Lag heatmap \u2014 backend",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 9,
+    "w": 12,
+    "x": 0,
+    "y": 13
+   },
+   "targets": [
+    {
+     "expr": "sum(increase(noxus_eventloop_lag_seconds_bucket{service=\"backend\"}[$__rate_interval])) by (le)",
+     "format": "heatmap",
+     "legendFormat": "{{le}}",
+     "refId": "A"
+    }
+   ],
+   "options": {
+    "calculate": false,
+    "yAxis": {
+     "unit": "s",
+     "decimals": 2
+    }
+   },
+   "description": "Sample distribution across the 20 lag buckets \u2014 shows the shape p99 hides."
+  },
+  {
+   "type": "heatmap",
+   "title": "Lag heatmap \u2014 worker",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 9,
+    "w": 12,
+    "x": 12,
+    "y": 13
+   },
+   "targets": [
+    {
+     "expr": "sum(increase(noxus_eventloop_lag_seconds_bucket{service=\"worker\"}[$__rate_interval])) by (le)",
+     "format": "heatmap",
+     "legendFormat": "{{le}}",
+     "refId": "A"
+    }
+   ],
+   "options": {
+    "calculate": false,
+    "yAxis": {
+     "unit": "s",
+     "decimals": 2
+    }
+   },
+   "description": "Sample distribution across the 20 lag buckets \u2014 shows the shape p99 hides."
+  },
+  {
+   "type": "row",
+   "title": "Blocked-loop attribution (watchdog)",
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 22
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Blocked seconds/s by culprit (top 10)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 9,
+    "w": 14,
+    "x": 0,
+    "y": 23
+   },
+   "targets": [
+    {
+     "expr": "topk(10, sum(rate(noxus_eventloop_blocked_seconds_total[$__rate_interval])) by (service, culprit))",
+     "legendFormat": "{{service}} \u00b7 {{culprit}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "custom": {
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    }
+   },
+   "description": "THE debugging panel: which code held the loop. Full stacks are in service logs (grep loop-watchdog)."
+  },
+  {
+   "type": "table",
+   "title": "Top culprits over selected range",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 9,
+    "w": 10,
+    "x": 14,
+    "y": 23
+   },
+   "targets": [
+    {
+     "expr": "topk(15, sum(increase(noxus_eventloop_blocked_seconds_total[$__range])) by (service, culprit))",
+     "format": "table",
+     "instant": true,
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      },
+      "renameByName": {
+       "Value": "blocked s"
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "blocked s",
+        "desc": true
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "row",
+   "title": "Known hotspots (fix instrumentation)",
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 32
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Model-registry builds/s by kind",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 33
+   },
+   "targets": [
+    {
+     "expr": "sum(rate(noxus_model_registry_builds_total[$__rate_interval])) by (kind)",
+     "legendFormat": "{{kind}}",
+     "refId": "A"
+    }
+   ],
+   "description": "Should be ~request-rate-proportional at most; spikes = a caller bypassing the ctx cache."
+  },
+  {
+   "type": "timeseries",
+   "title": "Registry build p95",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 33
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.95, sum(rate(noxus_model_registry_build_seconds_bucket[$__rate_interval])) by (le, kind))",
+     "legendFormat": "{{kind}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Run-data PG fallback /s",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 33
+   },
+   "targets": [
+    {
+     "expr": "sum(rate(noxus_run_data_pg_fallback_total[$__rate_interval]))",
+     "legendFormat": "fallbacks",
+     "refId": "A"
+    }
+   ],
+   "description": "Run-IO reads that missed Redis and validated the whole run payload from Postgres."
+  },
+  {
+   "type": "timeseries",
+   "title": "Role-perm cache batch size p95",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 41
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.95, sum(rate(noxus_role_perm_cache_batch_size_bucket[$__rate_interval])) by (le))",
+     "legendFormat": "batch size",
+     "refId": "A"
+    }
+   ],
+   "description": "Whale-tenant canary: roles resolved per auth MGET."
+  },
+  {
+   "type": "timeseries",
+   "title": "RunLog flush p95 / spill IO p95",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 41
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.95, sum(rate(noxus_runlog_flush_seconds_bucket[$__rate_interval])) by (le))",
+     "legendFormat": "runlog flush",
+     "refId": "A"
+    },
+    {
+     "expr": "histogram_quantile(0.95, sum(rate(noxus_spill_io_seconds_bucket[$__rate_interval])) by (le, op))",
+     "legendFormat": "spill {{op}}",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "/metrics render p95 + AI job defers/s",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 41
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.95, sum(rate(noxus_metrics_render_seconds_bucket[$__rate_interval])) by (le))",
+     "legendFormat": "metrics render p95",
+     "refId": "A"
+    },
+    {
+     "expr": "sum(rate(noxus_ai_job_defers_total[$__rate_interval])) by (task)",
+     "legendFormat": "defer {{task}}",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   }
+  },
+  {
+   "type": "row",
+   "title": "Request stages (backend await-side)",
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 49
+   }
+  },
+  {
+   "type": "stat",
+   "title": "DB p95 / req",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 0,
+    "y": 50
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.95, sum(rate(noxus_request_db_seconds_bucket[$__rate_interval])) by (le))",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Redis p95 / req",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 4,
+    "y": 50
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.95, sum(rate(noxus_request_redis_seconds_bucket[$__rate_interval])) by (le))",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Auth p95 / req",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 8,
+    "y": 50
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.95, sum(rate(noxus_request_auth_seconds_bucket[$__rate_interval])) by (le))",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Slow req / min",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 12,
+    "y": 50
+   },
+   "targets": [
+    {
+     "expr": "sum(rate(noxus_slow_requests_total[$__rate_interval])) * 60",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none"
+    }
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "description": "Requests over the slow threshold (default 2s). Details: grep slow-request."
+  },
+  {
+   "type": "stat",
+   "title": "DB pool in use (max)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 16,
+    "y": 50
+   },
+   "targets": [
+    {
+     "expr": "max(noxus_db_pool_in_use)",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none"
+    }
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "description": "Pool is 64+10 per process \u2014 sustained values near that = pool contention."
+  },
+  {
+   "type": "stat",
+   "title": "Response p95 bytes",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 20,
+    "y": 50
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.95, sum(rate(noxus_request_response_bytes_bucket[$__rate_interval])) by (le))",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "decbytes"
+    }
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "DB time p95 by handler (top 10)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 54
+   },
+   "targets": [
+    {
+     "expr": "topk(10, histogram_quantile(0.95, sum(rate(noxus_request_db_seconds_bucket[$__rate_interval])) by (le,handler)))",
+     "legendFormat": "{{handler}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   },
+   "description": "Cumulative query-execution time inside a request."
+  },
+  {
+   "type": "timeseries",
+   "title": "DB queries per request p95 (top 10 \u2014 N+1 canary)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 54
+   },
+   "targets": [
+    {
+     "expr": "topk(10, histogram_quantile(0.95, sum(rate(noxus_request_db_queries_bucket[$__rate_interval])) by (le,handler)))",
+     "legendFormat": "{{handler}}",
+     "refId": "A"
+    }
+   ],
+   "description": "A request issuing dozens of queries is an N+1."
+  },
+  {
+   "type": "timeseries",
+   "title": "Redis time p95 by handler (top 10)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 54
+   },
+   "targets": [
+    {
+     "expr": "topk(10, histogram_quantile(0.95, sum(rate(noxus_request_redis_seconds_bucket[$__rate_interval])) by (le,handler)))",
+     "legendFormat": "{{handler}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Redis ops per request p95 (top 10)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 62
+   },
+   "targets": [
+    {
+     "expr": "topk(10, histogram_quantile(0.95, sum(rate(noxus_request_redis_ops_bucket[$__rate_interval])) by (le,handler)))",
+     "legendFormat": "{{handler}}",
+     "refId": "A"
+    }
+   ],
+   "description": "Serial cache fan-out canary (the old 192-GET whale-auth pattern)."
+  },
+  {
+   "type": "timeseries",
+   "title": "Auth stage p95 by handler (top 10)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 62
+   },
+   "targets": [
+    {
+     "expr": "topk(10, histogram_quantile(0.95, sum(rate(noxus_request_auth_seconds_bucket[$__rate_interval])) by (le,handler)))",
+     "legendFormat": "{{handler}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    }
+   },
+   "description": "User/permission resolution incl. its own DB+Redis time."
+  },
+  {
+   "type": "timeseries",
+   "title": "Slow requests/min by handler + response p95 by handler (top 5)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 62
+   },
+   "targets": [
+    {
+     "expr": "topk(5, sum(rate(noxus_slow_requests_total[$__rate_interval])) by (handler)) * 60",
+     "legendFormat": "slow {{handler}}",
+     "refId": "A"
+    },
+    {
+     "expr": "topk(5, histogram_quantile(0.95, sum(rate(noxus_request_response_bytes_bucket[$__rate_interval])) by (le,handler)))",
+     "legendFormat": "bytes {{handler}}",
+     "refId": "B"
+    }
+   ],
+   "description": "Two scales on one panel; hover legend to isolate."
+  }
+ ]
+}

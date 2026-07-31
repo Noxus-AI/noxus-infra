@@ -1,0 +1,21 @@
+# Apply after the stack converges, once cert-manager's CRDs exist:
+#
+#   sed 's/ADMIN_EMAIL/you@example.com/' cluster-issuer.yaml | kubectl apply -f -
+#
+# Terraform does not manage this: a kubernetes_manifest resource is evaluated at
+# plan time, and the ClusterIssuer CRD does not exist until cert-manager has been
+# installed by the same apply.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ADMIN_EMAIL
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx

@@ -1,0 +1,24 @@
+{{- if .Values.sandbox.enabled }}
+{{- $fullName := include "noxus-platform.fullname" . }}
+{{- $labels := include "noxus-platform.labels" . }}
+{{- $selectorLabels := include "noxus-platform.selectorLabels" . }}
+{{- $sandbox := .Values.sandbox }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}-sandbox
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app: sandbox
+spec:
+  type: {{ $sandbox.service.type }}
+  selector:
+    app: sandbox
+    {{- $selectorLabels | nindent 4 }}
+  ports:
+    - port: {{ $sandbox.service.port }}
+      targetPort: {{ $sandbox.service.targetPort }}
+      protocol: TCP
+      name: http
+{{- end }}

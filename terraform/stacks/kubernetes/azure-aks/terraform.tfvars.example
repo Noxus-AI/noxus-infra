@@ -1,0 +1,60 @@
+project_name        = "noxus"
+environment         = "prod"
+resource_group_name = "noxus-prod-rg"
+location            = "westeurope"
+
+domain        = "noxus.example.com"
+dns_zone_name = "example.com"
+admin_email   = "admin@example.com"
+
+app_version = "0.8.1"
+
+# Entra ID groups that get cluster-admin.
+admin_group_object_ids = ["00000000-0000-0000-0000-000000000000"]
+
+postgres_sku          = "GP_Standard_D8ds_v5"
+postgres_storage_mb   = 524288
+postgres_storage_tier = "P30"
+
+redis_sku      = "Premium"
+redis_capacity = 1
+
+# A dedicated pool for knowledge-base ingestion, which is memory-hungry and
+# bursty enough to hurt agent latency if it shares nodes with chat workers.
+node_pools = {
+  workers = {
+    vm_size   = "Standard_D8ds_v5"
+    min_count = 2
+    max_count = 12
+  }
+}
+
+auth0 = {
+  domain        = "tenant.eu.auth0.com"
+  api_audience  = "https://api.noxus.example.com"
+  client_id     = "CHANGEME"
+  client_secret = "CHANGEME"
+}
+
+extra_values = [
+  <<-YAML
+    backend:
+      replicaCount: 2
+    frontend:
+      replicaCount: 2
+    worker:
+      pools:
+        default:
+          enabled: true
+          workerSubscribe: all_but_kb
+          autoscaling:
+            enabled: true
+            type: keda
+            minReplicas: 1
+            maxReplicas: 15
+        kb:
+          enabled: true
+          workerSubscribe: kb
+          replicaCount: 1
+  YAML
+]

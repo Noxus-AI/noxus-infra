@@ -1,0 +1,64 @@
+{{- if and .Values.backend.enabled .Values.backend.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "noxus-platform.fullname" . }}-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "noxus-platform.labels" . | nindent 4 }}
+    app: backend
+spec:
+  {{- if gt (int .Values.backend.replicaCount) 1 }}
+  maxUnavailable: {{ default 1 .Values.backend.podDisruptionBudget.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ default 1 .Values.backend.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: backend
+{{- end }}
+---
+{{- if and .Values.frontend.enabled .Values.frontend.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "noxus-platform.fullname" . }}-frontend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "noxus-platform.labels" . | nindent 4 }}
+    app: frontend
+spec:
+  {{- if gt (int .Values.frontend.replicaCount) 1 }}
+  maxUnavailable: {{ default 1 .Values.frontend.podDisruptionBudget.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ default 1 .Values.frontend.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: frontend
+{{- end }}
+---
+{{- if .Values.worker.enabled }}
+{{- $fullName := include "noxus-platform.fullname" . }}
+{{- $labels := include "noxus-platform.labels" . }}
+{{- range $poolName, $pool := .Values.worker.pools }}
+{{- if and $pool.enabled (default false (dig "podDisruptionBudget" "enabled" false $pool)) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $fullName }}-worker-{{ $poolName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app: worker
+    noxus.ai/pool: {{ $poolName }}
+spec:
+  maxUnavailable: {{ default 1 $pool.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      app: worker
+      noxus.ai/pool: {{ $poolName }}
+{{- end }}
+{{- end }}
+{{- end }}

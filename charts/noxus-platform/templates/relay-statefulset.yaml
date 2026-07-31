@@ -1,0 +1,72 @@
+{{- if .Values.relay.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "noxus-platform.fullname" . }}-relay
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "noxus-platform.labels" . | nindent 4 }}
+    app: relay
+spec:
+  {{- if not .Values.relay.autoscaling.enabled }}
+  replicas: {{ .Values.relay.replicaCount }}
+  {{- end }}
+  serviceName: {{ include "noxus-platform.fullname" . }}-relay
+  selector:
+    matchLabels:
+      app: relay
+  template:
+    metadata:
+      labels:
+        app: relay
+        {{- include "noxus-platform.selectorLabels" . | nindent 8 }}
+      annotations:
+        {{- include "noxus-platform.secretChecksum" . | nindent 8 }}
+        {{- with .Values.relay.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "noxus-platform.serviceAccountName" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.relay.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.relay.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.relay.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.relay.terminationGracePeriodSeconds }}
+      containers:
+        - name: relay
+          image: {{ include "noxus-platform.image" (dict "registry" .Values.global.imageRegistry "repository" .Values.relay.image.repository "tag" (default (printf "spotflow-relays-%s" .Values.appVersion) .Values.relay.image.tag)) }}
+          imagePullPolicy: {{ .Values.relay.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.relay.service.targetPort }}
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ include "noxus-platform.relayEnvSecret" . }}
+          resources:
+            {{- toYaml .Values.relay.resources | nindent 12 }}
+          {{- with .Values.relay.probes.startup }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.relay.probes.liveness }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.relay.probes.readiness }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

@@ -1,0 +1,102 @@
+# EKS example. Pair with terraform/stacks/kubernetes/aws-eks, which emits most of
+# these values for you (see its `helm_values` output).
+#
+# Assumes: AWS Load Balancer Controller + external-dns installed, ACM cert issued,
+# IRSA role bound to the chart's ServiceAccount for S3 access.
+
+appVersion: "0.8.1"
+
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::111122223333:role/noxus-prod-pods
+
+env:
+  ADMIN_EMAIL: admin@example.com
+  DEPLOYMENT_ENV: prod
+  IS_PROD: "true"
+  ON_PREM: "false"
+
+  FRONTEND_URL: https://noxus.example.com
+  BACKEND_URL: https://api.noxus.example.com
+  RELAY_URL: https://relay.noxus.example.com
+
+  BUCKET_CLIENT: s3
+  SPOTFLOW_STORAGE_BUCKET: noxus-prod-artifacts
+  SPOTFLOW_PUBLIC_STORAGE_BUCKET: noxus-prod-artifacts-public
+  AWS_REGION: eu-west-1
+  # S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY are omitted on purpose — the pod
+  # ServiceAccount above assumes an IRSA role, so the SDK picks up credentials
+  # from the projected token. Only set static keys if IRSA is unavailable.
+
+  PROM_REMOTE_WRITE_URL: https://aps-workspaces.eu-west-1.amazonaws.com/workspaces/ws-xxxx/api/v1/remote_write
+
+secrets:
+  # Point at PgBouncer, not RDS directly — see pgbouncer below.
+  POSTGRESQL_URL: "postgres:CHANGEME@noxus-prod-postgres.xxxx.eu-west-1.rds.amazonaws.com:5432"
+  VECTOR_POSTGRESQL_URL: "postgres:CHANGEME@noxus-prod-postgres.xxxx.eu-west-1.rds.amazonaws.com:5432"
+  REDIS_URL: "noxus-prod-redis.xxxx.ng.0001.euw1.cache.amazonaws.com"
+
+  AUTH0_DOMAIN: tenant.eu.auth0.com
+  AUTH0_ISSUER_BASE_URL: https://tenant.eu.auth0.com
+  AUTH0_BASE_URL: https://noxus.example.com
+  AUTH0_API_AUDIENCE: https://api.noxus.example.com
+  AUTH0_CLIENT_ID: CHANGEME
+  AUTH0_CLIENT_SECRET: CHANGEME
+  AUTH0_SECRET: CHANGEME
+
+ingress:
+  enabled: true
+  className: alb
+  domain: noxus.example.com
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:eu-west-1:111122223333:certificate/CHANGEME
+
+pgbouncer:
+  enabled: true
+  postgresqlUrlSecret:
+    name: noxus-upstream-postgres
+
+backend:
+  replicaCount: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+
+frontend:
+  replicaCount: 2
+
+worker:
+  keda:
+    existingPostgresSecret: noxus-keda-postgres
+  pools:
+    default:
+      enabled: true
+      workerSubscribe: all_but_kb
+      autoscaling:
+        enabled: true
+        type: keda
+        minReplicas: 2
+        maxReplicas: 20
+    kb:
+      enabled: true
+      replicaCount: 1
+      workerSubscribe: kb
+      resources:
+        requests: { cpu: "4", memory: "16Gi" }
+        limits: { cpu: "4", memory: "16Gi" }
+      autoscaling:
+        enabled: true
+        type: hpa
+        minReplicas: 1
+        maxReplicas: 5
+        targetCPUUtilizationPercentage: 75
+
+sandbox:
+  enabled: true

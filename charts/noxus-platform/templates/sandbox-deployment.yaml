@@ -1,0 +1,150 @@
+{{- if .Values.sandbox.enabled }}
+{{- $fullName := include "noxus-platform.fullname" . }}
+{{- $labels := include "noxus-platform.labels" . }}
+{{- $selectorLabels := include "noxus-platform.selectorLabels" . }}
+{{- $saName := include "noxus-platform.serviceAccountName" . }}
+{{- $global := .Values.global }}
+{{- $sandbox := .Values.sandbox }}
+{{- $jail := $sandbox.jail | default "syd" }}
+{{- $appVersion := .Values.appVersion }}
+{{- /* syd (https://sydbox.exherbo.org) jails network + syscalls in
+       userspace — no privileged pod, no netns/iptables. The manager
+       creates a private mount namespace with an OverlayFS root, then
+       runs syd inside the chroot. It needs SYS_ADMIN (mount/unshare)
+       and SYS_PTRACE (syd supervisor/pidfd path), which the
+       RuntimeDefault seccomp profile then renders as allowed. */}}
+# Sandbox state (OverlayFS CoW upper dir, state.json)
+# lives on an ephemeral emptyDir. Persistence across pod restarts is handled
+# by the FS sync mode in agentsandbox/main.py: every sandbox is periodically
+# pushed to object storage (BUCKET_CLIENT / SPOTFLOW_STORAGE_BUCKET via the
+# inherited app-env secret) and rehydrated on startup. Set
+# SANDBOX_FS_ENABLED=true in .Values.sandbox.env.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullName }}-sandbox
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app: sandbox
+spec:
+  replicas: {{ $sandbox.replicaCount | default 1 }}
+  # RollingUpdate: old and new pods briefly overlap during an upgrade and
+  # can both sync to the same object-store prefix — accepted trade-off for
+  # not taking the sandbox API down on every deploy.
+  selector:
+    matchLabels:
+      app: sandbox
+      {{- $selectorLabels | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: sandbox
+        {{- $selectorLabels | nindent 8 }}
+      annotations:
+        # AppArmor unconfined for the sandbox: the manager mounts
+        # overlay/proc/bind inside the container, which the default AppArmor
+        # profile denies (EACCES) even with SYS_ADMIN. Annotation form for
+        # k8s < 1.30; the container securityContext.appArmorProfile below
+        # covers 1.30+.
+        container.apparmor.security.beta.kubernetes.io/sandbox: unconfined
+        {{- with $sandbox.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ $saName }}
+      {{- with $global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $sandbox.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $sandbox.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $sandbox.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ $sandbox.terminationGracePeriodSeconds }}
+      containers:
+        - name: sandbox
+          image: {{ include "noxus-platform.image" (dict "registry" $global.imageRegistry "repository" $sandbox.image.repository "tag" (default (printf "agentsandbox-%s" $appVersion) $sandbox.image.tag)) }}
+          imagePullPolicy: {{ $sandbox.image.pullPolicy }}
+          securityContext:
+            # syd runs unprivileged: RuntimeDefault seccomp renders unshare +
+            # pidfd_getfd allowed once these two caps are present. The
+            # "minimal" jail skips syd, so it only needs SYS_ADMIN for the
+            # overlay mount namespace — its egress policy comes from the
+            # NetworkPolicy in sandbox-networkpolicy.yaml instead.
+            seccompProfile:
+              type: RuntimeDefault
+            # AppArmor unconfined so the manager's in-container mounts aren't
+            # denied (k8s 1.30+; annotation above covers older). Not
+            # privileged — just caps + seccomp + AppArmor.
+            appArmorProfile:
+              type: Unconfined
+            capabilities:
+              {{- if eq $jail "minimal" }}
+              add: ["SYS_ADMIN"]
+              {{- else }}
+              add: ["SYS_ADMIN", "SYS_PTRACE"]
+              {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $sandbox.service.targetPort }}
+              protocol: TCP
+          envFrom:
+            # Inherits the platform-wide config (BUCKET_CLIENT,
+            # SPOTFLOW_STORAGE_BUCKET, S3 credentials, ...) so FS-mode sync
+            # uses the same object store as the rest of the platform.
+            - secretRef:
+                name: {{ include "noxus-platform.appEnvSecret" . }}
+          env:
+            - name: SANDBOX_JAIL
+              value: {{ $jail | quote }}
+            {{- range $key, $value := $sandbox.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml $sandbox.resources | nindent 12 }}
+          volumeMounts:
+            - name: sandbox-data
+              mountPath: /data/sandboxes
+            - name: nix-cache
+              mountPath: /var/cache/nginx/nix
+            - name: nix-meta-cache
+              mountPath: /var/cache/nginx/nix-meta
+            - name: dshm
+              mountPath: /dev/shm
+          {{- with $sandbox.probes.startup }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $sandbox.probes.liveness }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $sandbox.probes.readiness }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: nix-cache
+          emptyDir: {}
+        - name: nix-meta-cache
+          emptyDir: {}
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ $sandbox.shmSize | default "512Mi" }}
+        # Ephemeral CoW scratch — state is synced to object storage by the
+        # manager's FS mode, so losing this on pod eviction is recoverable.
+        - name: sandbox-data
+          emptyDir:
+            sizeLimit: {{ $sandbox.storage | default "10Gi" }}
+{{- end }}

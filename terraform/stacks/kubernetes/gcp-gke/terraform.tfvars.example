@@ -1,0 +1,49 @@
+project_name = "noxus"
+environment  = "prod"
+
+project_id = "my-gcp-project"
+region     = "europe-west1"
+
+domain           = "noxus.example.com"
+dns_managed_zone = "example-com"
+admin_email      = "admin@example.com"
+
+app_version = "0.8.1"
+
+# Terraform installs the Helm release over the Kubernetes API, so whatever runs
+# apply must be able to reach it.
+master_authorized_networks = [
+  {
+    cidr_block   = "203.0.113.0/24"
+    display_name = "office"
+  },
+]
+
+postgres_tier   = "db-custom-8-32768"
+redis_memory_gb = 5
+
+auth0 = {
+  domain        = "tenant.eu.auth0.com"
+  api_audience  = "https://api.noxus.example.com"
+  client_id     = "CHANGEME"
+  client_secret = "CHANGEME"
+}
+
+extra_values = [
+  <<-YAML
+    backend:
+      replicaCount: 2
+    frontend:
+      replicaCount: 2
+    worker:
+      pools:
+        default:
+          enabled: true
+          workerSubscribe: all_but_kb
+          autoscaling:
+            enabled: true
+            type: keda
+            minReplicas: 1
+            maxReplicas: 15
+  YAML
+]

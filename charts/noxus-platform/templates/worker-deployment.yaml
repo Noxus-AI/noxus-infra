@@ -1,0 +1,121 @@
+{{- if .Values.worker.enabled }}
+{{- $fullName := include "noxus-platform.fullname" . }}
+{{- $labels := include "noxus-platform.labels" . }}
+{{- $selectorLabels := include "noxus-platform.selectorLabels" . }}
+{{- $secretChecksum := include "noxus-platform.secretChecksum" . }}
+{{- $saName := include "noxus-platform.serviceAccountName" . }}
+{{- $global := .Values.global }}
+{{- $worker := .Values.worker }}
+{{- $appVersion := .Values.appVersion }}
+{{- range $poolName, $pool := .Values.worker.pools }}
+{{- if $pool.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullName }}-worker-{{ $poolName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app: worker
+    noxus.ai/pool: {{ $poolName }}
+spec:
+  {{- if not (default false (dig "autoscaling" "enabled" false $pool)) }}
+  replicas: {{ $pool.replicaCount | default 1 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: worker
+      noxus.ai/pool: {{ $poolName }}
+  template:
+    metadata:
+      labels:
+        app: worker
+        noxus.ai/pool: {{ $poolName }}
+        {{- $selectorLabels | nindent 8 }}
+      annotations:
+        {{- $secretChecksum | nindent 8 }}
+        {{- with $worker.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ $saName }}
+      {{- with $global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $pool.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $pool.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $pool.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $pool.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ $worker.terminationGracePeriodSeconds }}
+      containers:
+        - name: worker
+          image: {{ include "noxus-platform.image" (dict "registry" $global.imageRegistry "repository" $worker.image.repository "tag" (default (printf "spotflow-worker-%s" $appVersion) $worker.image.tag)) }}
+          imagePullPolicy: {{ $worker.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $worker.service.targetPort }}
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ $fullName }}-app-env
+            {{- if $pool.envSecretRef }}
+            - secretRef:
+                name: {{ $pool.envSecretRef }}
+            {{- end }}
+          env:
+            - name: WORKER_SUBSCRIBE
+              value: {{ $pool.workerSubscribe | default "all_but_kb" | quote }}
+            {{- if $.Values.sandbox.enabled }}
+            - name: SANDBOX_MANAGER_URL
+              value: "http://{{ $fullName }}-sandbox:{{ $.Values.sandbox.service.port }}"
+            - name: USE_REMOTE_SANDBOX
+              value: "true"
+            - name: REMOTE_SANDBOX_BACKEND
+              value: {{ ($.Values.sandbox.backend | default "syd") | quote }}
+            - name: LOCAL_SANDBOX_BACKEND
+              value: {{ ($.Values.sandbox.localBackend | default "none") | quote }}
+            {{- else }}
+            - name: USE_REMOTE_SANDBOX
+              value: "false"
+            - name: LOCAL_SANDBOX_BACKEND
+              value: {{ ($.Values.sandbox.localBackend | default "deno") | quote }}
+            {{- end }}
+            {{- if $pool.workerSubscribeWorkspaces }}
+            - name: WORKER_SUBSCRIBE_WORKSPACES
+              value: {{ $pool.workerSubscribeWorkspaces | quote }}
+            {{- end }}
+            {{- if $pool.workerUnsubscribeWorkspaces }}
+            - name: WORKER_UNSUBSCRIBE_WORKSPACES
+              value: {{ $pool.workerUnsubscribeWorkspaces | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml $pool.resources | nindent 12 }}
+          {{- with $worker.probes.startup }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $worker.probes.liveness }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $worker.probes.readiness }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,22 @@
+# Smallest input that must render. Exercises the default component set.
+env:
+  ADMIN_EMAIL: ci@example.com
+  FRONTEND_URL: https://ci.example.com
+  BACKEND_URL: https://api.ci.example.com
+
+secrets:
+  POSTGRESQL_URL: "postgres:pw@db:5432"
+  VECTOR_POSTGRESQL_URL: "postgres:pw@db:5432"
+  REDIS_URL: "redis"
+  AUTH0_DOMAIN: ci.eu.auth0.com
+  AUTH0_CLIENT_ID: ci
+  AUTH0_CLIENT_SECRET: ci
+  AUTH0_SECRET: ci
+
+ingress:
+  enabled: true
+  className: nginx
+  domain: ci.example.com
+
+keda:
+  enabled: false

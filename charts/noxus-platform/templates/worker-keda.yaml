@@ -1,0 +1,92 @@
+{{- if .Values.worker.enabled }}
+{{- $fullName := include "noxus-platform.fullname" . }}
+{{- $labels := include "noxus-platform.labels" . }}
+{{- $keda := .Values.worker.keda }}
+
+{{/* Check if any pool uses KEDA */}}
+{{- $needsKeda := false }}
+{{- range $poolName, $pool := .Values.worker.pools }}
+{{- if and $pool.enabled (default false (dig "autoscaling" "enabled" false $pool)) (eq (default "hpa" (dig "autoscaling" "type" "hpa" $pool)) "keda") }}
+{{- $needsKeda = true }}
+{{- end }}
+{{- end }}
+
+{{- if $needsKeda }}
+{{/* Create the postgres auth secret (unless using an existing one) */}}
+{{- if and $keda.postgresConnectionString (not $keda.existingPostgresSecret) }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $fullName }}-keda-postgres-auth
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- $labels | nindent 4 }}
+type: Opaque
+stringData:
+  connectionString: {{ $keda.postgresConnectionString | quote }}
+{{- end }}
+
+{{/* TriggerAuthentication for PostgreSQL */}}
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ $fullName }}-keda-postgres-auth
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  secretTargetRef:
+    - parameter: connection
+      name: {{ default (printf "%s-keda-postgres-auth" $fullName) $keda.existingPostgresSecret }}
+      key: connectionString
+
+{{/* ScaledObject per pool */}}
+{{- range $poolName, $pool := .Values.worker.pools }}
+{{- $autoEnabled := default false (dig "autoscaling" "enabled" false $pool) }}
+{{- $autoType := default "hpa" (dig "autoscaling" "type" "hpa" $pool) }}
+{{- if and $pool.enabled $autoEnabled (eq $autoType "keda") }}
+{{- $poolKeda := default dict (dig "autoscaling" "keda" (dict) $pool) }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ $fullName }}-worker-{{ $poolName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app: worker
+    noxus.ai/pool: {{ $poolName }}
+spec:
+  pollingInterval: {{ default $keda.pollingInterval ($poolKeda).pollingInterval | default 15 }}
+  scaleTargetRef:
+    name: {{ $fullName }}-worker-{{ $poolName }}
+  minReplicaCount: {{ $pool.autoscaling.minReplicas | default 1 }}
+  maxReplicaCount: {{ $pool.autoscaling.maxReplicas | default 10 }}
+  {{- with $pool.autoscaling.behavior }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        {{- toYaml . | nindent 8 }}
+  {{- end }}
+  triggers:
+    {{/* Cron trigger: only when minReplicas is 0 and cronTrigger is enabled */}}
+    {{- if and (eq (int ($pool.autoscaling.minReplicas | default 1)) 0) (default true $keda.cronTrigger.enabled) }}
+    - type: cron
+      metadata:
+        timezone: {{ default "UTC" $keda.cronTrigger.timezone | quote }}
+        start: {{ $keda.cronTrigger.start | quote }}
+        end: {{ $keda.cronTrigger.end | quote }}
+        desiredReplicas: {{ $keda.cronTrigger.desiredReplicas | default 1 | quote }}
+    {{- end }}
+    - type: postgresql
+      metadata:
+        targetQueryValue: {{ default $keda.targetQueryValue (index (default dict ($poolKeda)) "targetQueryValue") | default "10" | quote }}
+        query: {{ default $keda.query (index (default dict ($poolKeda)) "query") | quote }}
+      authenticationRef:
+        name: {{ $fullName }}-keda-postgres-auth
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,19 @@
+{{- if .Values.relay.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "noxus-platform.fullname" . }}-relay
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "noxus-platform.labels" . | nindent 4 }}
+    app: relay
+spec:
+  type: {{ .Values.relay.service.type }}
+  selector:
+    app: relay
+  ports:
+    - port: {{ .Values.relay.service.port }}
+      targetPort: {{ .Values.relay.service.targetPort }}
+      protocol: TCP
+      name: http
+{{- end }}

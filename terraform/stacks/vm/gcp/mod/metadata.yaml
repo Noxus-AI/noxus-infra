@@ -1,0 +1,59 @@
+apiVersion: blueprints.cloud.google.com/v1alpha1
+kind: BlueprintMetadata
+metadata:
+  name: marketplace-tools
+  annotations:
+    config.kubernetes.io/local-config: "true"
+spec:
+  info:
+    title: Noxus AI
+    source:
+      repo: https://github.com/noxus-ai/noxus-infra.git
+      sourceType: git
+      dir: /terraform/stacks/vm/gcp/mod
+    version: 0.0.1
+    actuationTool:
+      flavor: Terraform
+      version: "1.9.5"
+    description: {}
+  interfaces:
+    variables:
+      - name: admin_email
+        description: The email address for the Noxus admin.
+        varType: string
+        required: true
+      - name: goog_cm_deployment_name
+        description: The name of the deployment and VM instance.
+        varType: string
+        required: true
+      - name: whitelabel_logo
+        description: URL to a logo of your organization.
+        varType: string
+        defaultValue: ""
+      - name: machine_type
+        description: The machine type to create, e.g. e2-small
+        varType: string
+        defaultValue: n1-standard-2
+      - name: source_image
+        description: The image name for the disk for the VM instance.
+        varType: string
+        defaultValue: projects/spot-public/global/images/spot-standalone-ca6acdb-20241226t204721
+      - name: region
+        description: The region to run in
+        varType: string
+        defaultValue: "europe-west1"
+      - name: zone
+        description: The zone for the solution to be deployed.
+        varType: string
+        defaultValue: europe-west1-b
+      - name: domain
+        description: The domain name for SSL certificates and other configurations.
+        varType: string
+        required: true
+      - name: project_id
+        description: The ID of the project in which to provision resources.
+        varType: string
+        required: true
+    outputs:
+      - name: load_balancer_ip
+        description: IP address of the load balancer

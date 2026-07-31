@@ -1,0 +1,76 @@
+{{- if .Values.ingress.enabled }}
+{{- $fullName := include "noxus-platform.fullname" . -}}
+{{- $domain := .Values.ingress.domain -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "noxus-platform.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if $domain }}
+    external-dns.alpha.kubernetes.io/hostname: "{{ $domain }},api.{{ $domain }},relay.{{ $domain }}"
+    {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    {{- toYaml .Values.ingress.tls | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- if .Values.frontend.enabled }}
+    - host: {{ $domain }}
+      http:
+        paths:
+          {{- if .Values.backend.enabled }}
+          # `/mcp` routes to the backend Service: the backend FastAPI
+          # mounts the MCP ASGI sub-app at /mcp (spotflow_backend.main),
+          # so no dedicated MCP container is needed. ALB longest-prefix
+          # matching ensures /mcp wins over the / catch-all that follows.
+          - path: /mcp
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}-backend
+                port:
+                  number: {{ .Values.backend.service.port }}
+          {{- end }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}-frontend
+                port:
+                  number: {{ .Values.frontend.service.port }}
+    {{- end }}
+    {{- if .Values.backend.enabled }}
+    - host: api.{{ $domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}-backend
+                port:
+                  number: {{ .Values.backend.service.port }}
+    {{- end }}
+    {{- if .Values.relay.enabled }}
+    - host: relay.{{ $domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}-relay
+                port:
+                  number: {{ .Values.relay.service.port }}
+    {{- end }}
+{{- end }}
