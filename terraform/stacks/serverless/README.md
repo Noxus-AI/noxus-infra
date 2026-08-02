@@ -32,13 +32,30 @@ If knowledge-base ingestion is central to your workload, use Kubernetes.
 
 ## Services deployed
 
-| Service | Shape | Notes |
-|---------|-------|-------|
-| backend | Request-scaled | Serves the API and the MCP endpoint at `/mcp` |
-| frontend | Request-scaled | |
-| worker | Always-on | Polls the job queue |
-| beat | Always-on, single instance | Scheduled jobs. **Must not scale past 1** — duplicate schedulers double-enqueue |
-| relay | Request-scaled | Only when integration channels are used |
+| Service | Shape | `gcp-cloudrun` | `azure-containerapps` | Notes |
+|---------|-------|:--:|:--:|-------|
+| backend | Request-scaled | ✓ | ✓ | Serves the API and the MCP endpoint at `/mcp` |
+| frontend | Request-scaled | ✓ | ✓ | |
+| worker | Always-on | ✓ | ✓ | Polls the job queue |
+| relay | Request-scaled | ✓ | ✓ | Only when integration channels are used |
+| beat | Always-on, single instance | ✓ | — | Scheduled jobs. **Must not scale past 1** — duplicate schedulers double-enqueue |
+
+<!-- The beat gap is real, not an oversight in this table: the Azure stack
+     deploys four container apps and none of them overrides the worker
+     entrypoint, so nothing runs the scheduler. -->
+
+> **The Azure stack has no scheduler.** Cloud Run runs `beat` as a fifth service
+> (the worker image with `beat_start.sh` as its command). Container Apps does
+> not, so anything time-driven — polling triggers, scheduled workflow runs,
+> periodic maintenance jobs — will not fire there. Event-driven and
+> user-initiated work is unaffected.
+>
+> If you need scheduled work on Azure today, either add a fifth container app
+> running the worker image with that command and `min_replicas = max_replicas = 1`,
+> or use the [Kubernetes](../kubernetes/azure-aks) path, where the chart handles it.
+
+Neither stack deploys the **Agent Sandbox**, which is required for plugins and
+for isolated Run Code execution. See [docs/architecture.md](../../../docs/architecture.md).
 
 ## Common configuration
 

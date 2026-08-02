@@ -1,0 +1,26 @@
+# Copy to deploy.tfvars and fill in. Never commit a filled-in copy —
+# .gitignore excludes every *.tfvars file except this one.
+
+location            = "westeurope"
+resource_group_name = "noxus-rg"
+deployment_name     = "noxus"
+
+# Leave empty to serve on the Container App Environment's default hostnames.
+domain          = ""
+admin_email     = ""
+whitelabel_logo = ""
+deployment_env  = "prod"
+
+# Tag of the noxusai/noxus-* images to deploy.
+vm_version       = ""
+docker_hub_token = ""
+
+# Auth0 application (login) and machine-to-machine (Management API) credentials.
+auth0_client_secret      = ""
+auth0_mgmt_client_id     = ""
+auth0_mgmt_client_secret = ""
+
+# Set create_resource_group = false to deploy into a group you do not own.
+# Set use_managed_identity = false if you cannot create role assignments.
+create_resource_group = true
+use_managed_identity  = true
