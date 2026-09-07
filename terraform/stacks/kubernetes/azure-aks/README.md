@@ -1,15 +1,20 @@
 # Noxus on AKS
 
 Provisions a VNet, an AKS cluster, PostgreSQL Flexible Server, Azure Cache for
-Redis, a Storage account, ingress-nginx with a static IP, cert-manager, and
-installs `charts/noxus-platform`.
+Redis, a Storage account, a Container Registry holding mirrored platform images,
+ingress-nginx with a static IP, cert-manager, and installs
+`charts/noxus-platform`.
 
 ## Prerequisites
 
 - An Azure subscription and a resource group (the stack can create it).
 - An Azure DNS zone for your domain (optional; you can create records yourself).
 - An Auth0 tenant with an application for `https://<domain>`.
-- `az` authenticated; `tofu` ≥ 1.5; `helm` ≥ 3.
+- `az` authenticated; `tofu` ≥ 1.5; `helm` ≥ 3. The image mirror runs
+  `az acr import` through a local provisioner, so the same `az` session needs
+  rights on the new registry.
+- Docker Hub credentials with pull access to the platform images
+  (`docker_hub_username` / `docker_hub_token`), unless the repository is public.
 
 ## Deploy
 
@@ -64,13 +69,30 @@ the backend fail on first boot with a permission error rather than a clear one.
 from module outputs. A hand-written values file must set both, or connections
 fail.
 
-**Blob Storage is used through its S3-compatible endpoint.** `BUCKET_CLIENT` is
-`s3`, `S3_ENDPOINT_URL` points at the account, and the account name and access
-key stand in for the S3 credential pair.
+**Blob Storage has no S3-compatible API**, so this uses the platform's native
+Azure client: `BUCKET_CLIENT=azure` with `AZURE_STORAGE_ACCOUNT_KEY`. That client
+treats `SPOTFLOW_STORAGE_BUCKET` as the storage *account* name — it builds
+`https://<account>.blob.core.windows.net` itself — and writes everything into a
+fixed `noxus` container, so the stack names the private container `noxus` to keep
+it Terraform-managed. The public container is created but unused on this path;
+public assets are served through presigned URLs from the private one.
 
-**The federated identity credential subject is an exact string** —
-`system:serviceaccount:<namespace>:<release_name>`. Renaming the release or
-moving namespaces breaks pod identity with a generic authorization error.
+**Images are mirrored into ACR.** Pulling from Docker Hub does not survive a
+scale-out: the anonymous rate limit is per source IP and every node shares the
+NAT gateway's. The stack creates a registry, imports the five platform images
+into it under the same repository path, and grants the kubelet identity
+`AcrPull` — which is what lets pods pull with no `imagePullSecret`. A platform
+version bump re-runs the import. Point `image_registry` at a registry you
+already run to skip all of it; add `image_pull_secrets` if that one needs
+credentials.
+
+**The federated identity credential is created but not yet in use.** Its
+subject is an exact string — `system:serviceaccount:<namespace>:<release_name>`
+— and two things currently stop pods exchanging a token with it: the chart's
+ServiceAccount is named `<release>-noxus-platform`, not `<release>`, and the
+chart does not label pods `azure.workload.identity/use: "true"`, which the
+Azure webhook requires before it injects the token. Until both are fixed,
+storage authenticates with the account key and this credential is inert.
 
 **Postgres needs a delegated subnet all to itself.** Nothing else can go in it.
 The network module also creates and links the private DNS zone; without that

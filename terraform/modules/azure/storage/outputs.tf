@@ -1,10 +1,10 @@
 output "account_name" {
-  description = "Storage account name. Also the S3-compatible access key ID."
+  description = "Storage account name. With BUCKET_CLIENT=azure this is what SPOTFLOW_STORAGE_BUCKET is set to — the client derives the blob endpoint from it."
   value       = azurerm_storage_account.this.name
 }
 
 output "blob_endpoint" {
-  description = "Blob service endpoint. Set as env.S3_ENDPOINT_URL, since the platform reaches Blob Storage through its S3-compatible path."
+  description = "Blob service endpoint, for reference. Blob Storage exposes no S3-compatible API, so this is not an S3_ENDPOINT_URL — use BUCKET_CLIENT=azure instead."
   value       = azurerm_storage_account.this.primary_blob_endpoint
 }
 
@@ -19,7 +19,7 @@ output "public_container" {
 }
 
 output "access_key" {
-  description = "Primary access key. Set as the chart's secrets.S3_SECRET_ACCESS_KEY, with account_name as S3_ACCESS_KEY_ID."
+  description = "Primary access key. Set as the chart's secrets.AZURE_STORAGE_ACCOUNT_KEY."
   value       = azurerm_storage_account.this.primary_access_key
   sensitive   = true
 }

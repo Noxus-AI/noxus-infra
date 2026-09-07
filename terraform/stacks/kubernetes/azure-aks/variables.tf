@@ -215,6 +215,57 @@ variable "cluster_issuer_name" {
   default     = "letsencrypt-prod"
 }
 
+# --- Container registry ---------------------------------------------------
+
+variable "create_acr" {
+  description = "Create an Azure Container Registry, mirror the platform images into it, and grant the kubelet identity AcrPull. Ignored when image_registry is set."
+  type        = bool
+  default     = true
+}
+
+variable "acr_name" {
+  description = "Registry name. Empty derives it from project and environment. ACR names are globally unique, so override this on a collision."
+  type        = string
+  default     = ""
+}
+
+variable "acr_sku" {
+  description = "ACR SKU. Basic is enough for one deployment; Standard or Premium buy throughput and geo-replication."
+  type        = string
+  default     = "Standard"
+}
+
+variable "image_registry" {
+  description = "Use a registry you already run instead of creating one, e.g. \"myacr.azurecr.io\". Set image_pull_secret too if it needs credentials, and mirror the images yourself."
+  type        = string
+  default     = ""
+}
+
+variable "image_pull_secrets" {
+  description = "Existing imagePullSecrets in the platform namespace. Unnecessary for an ACR the kubelet identity can pull from."
+  type        = list(string)
+  default     = []
+}
+
+variable "platform_image_repository" {
+  description = "Source repository for the platform images. Tags are derived as <service>-<app_version>."
+  type        = string
+  default     = "noxusai/noxus-np"
+}
+
+variable "docker_hub_username" {
+  description = "Docker Hub account with pull access to platform_image_repository. Empty attempts an anonymous import, which only works for public repositories."
+  type        = string
+  default     = ""
+}
+
+variable "docker_hub_token" {
+  description = "Docker Hub access token paired with docker_hub_username."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 # --- Platform -------------------------------------------------------------
 
 variable "release_name" {

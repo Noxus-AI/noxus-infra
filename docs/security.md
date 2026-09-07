@@ -60,7 +60,7 @@ Prefer it over static keys everywhere it is available.
 |-------|-----------|----------|
 | AWS | IRSA — an IAM role assumed via the cluster's OIDC provider | `modules/aws/eks-addons` → `helm_service_account_annotation` |
 | GCP | Workload Identity — a Google SA bound to the Kubernetes SA | `modules/gcp/storage` → `helm_service_account_annotation` |
-| Azure | Workload Identity — a federated user-assigned identity | `modules/azure/aks` → `helm_service_account_annotation` |
+| Azure | Workload Identity — a federated user-assigned identity. **Not yet usable for the platform pods:** the chart does not label pods `azure.workload.identity/use: "true"`, which the webhook requires, so `azure-aks` uses the storage account key instead | `modules/azure/aks` → `helm_service_account_annotation` |
 
 Each returns an annotation map the `noxus-release` module puts on the chart's
 ServiceAccount. With it, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` stay

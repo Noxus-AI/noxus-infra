@@ -139,8 +139,11 @@ Two buckets:
   through presigned URLs; only make it publicly readable if you front it with a
   CDN.
 
-The platform speaks S3 or GCS. Azure Blob is used through its S3-compatible
-endpoint, with the account name and access key standing in for the S3 key pair.
+The platform speaks S3, GCS, or Azure Blob natively (`BUCKET_CLIENT`). Blob
+Storage exposes no S3-compatible API, so on Azure the native client is the only
+option: `SPOTFLOW_STORAGE_BUCKET` is the storage *account* name, the credential
+is `AZURE_STORAGE_ACCOUNT_KEY`, and everything lands in one fixed container —
+the private/public split above collapses on that path.
 
 ## Request and job flow
 

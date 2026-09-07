@@ -29,6 +29,10 @@ node_pools = {
   }
 }
 
+# Pull credentials for the platform images, mirrored into ACR on apply.
+docker_hub_username = "CHANGEME"
+docker_hub_token    = "CHANGEME"
+
 auth0 = {
   domain        = "tenant.eu.auth0.com"
   api_audience  = "https://api.noxus.example.com"

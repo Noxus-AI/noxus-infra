@@ -50,3 +50,13 @@ output "nat_public_ip" {
   description = "Stable egress IP. Allowlist this on third-party services."
   value       = module.network.nat_public_ip
 }
+
+output "acr_login_server" {
+  description = "Login server of the created registry, or the registry passed in. Empty when neither applies."
+  value       = local.image_registry
+}
+
+output "storage_container" {
+  description = "Container the platform writes into. The native Azure client uses a fixed name, so this is informational."
+  value       = module.storage.private_container
+}

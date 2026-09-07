@@ -11,6 +11,24 @@ locals {
   )
 
   hostnames = [var.domain, "api.${var.domain}", "relay.${var.domain}"]
+
+  create_acr = var.create_acr && var.image_registry == ""
+
+  # Empty leaves the chart pulling `noxusai/noxus-np` from Docker Hub as written.
+  # one() rather than [0] so this stays valid when the registry is not created.
+  image_registry = coalesce(one(azurerm_container_registry.this[*].login_server), var.image_registry)
+
+  # Tag layout matches the chart's own defaults: one repository, one tag per
+  # service, all pinned to app_version.
+  platform_images = {
+    for service in [
+      "spotflow-backend",
+      "spotflow-frontend",
+      "spotflow-worker",
+      "spotflow-relays",
+      "agentsandbox",
+    ] : service => "${var.platform_image_repository}:${service}-${var.app_version}"
+  }
 }
 
 resource "azurerm_resource_group" "this" {
@@ -55,6 +73,12 @@ module "storage" {
 
   replication_type     = var.environment == "prod" ? "ZRS" : "LRS"
   cors_allowed_origins = ["https://${var.domain}"]
+
+  # The platform's native Azure Blob client writes into a fixed container name
+  # rather than one derived from the bucket env vars, so Terraform owns that
+  # container instead of leaving the app to create it on first write.
+  private_container_name = "noxus"
+  public_container_name  = "noxus-public"
 
   tags = local.tags
 }
@@ -207,6 +231,74 @@ resource "azurerm_dns_a_record" "hostnames" {
   tags                = local.tags
 }
 
+# --------------------------------------------------------------------------
+# Container registry. The platform images live on Docker Hub; pulling them
+# straight from there does not survive a scale-out — the anonymous rate limit
+# is per source IP, and every node behind the NAT gateway shares one. So they
+# are mirrored into ACR, and the kubelet identity is granted AcrPull, which is
+# what lets pods pull with no imagePullSecret at all.
+# --------------------------------------------------------------------------
+
+resource "azurerm_container_registry" "this" {
+  count = local.create_acr ? 1 : 0
+
+  name                = var.acr_name != "" ? var.acr_name : replace("${local.name}acr", "-", "")
+  resource_group_name = local.resource_group_name
+  location            = var.location
+  sku                 = var.acr_sku
+  # Pods authenticate as the kubelet identity, so the admin user stays off.
+  admin_enabled = false
+  tags          = local.tags
+}
+
+resource "azurerm_role_assignment" "acr_pull" {
+  count = local.create_acr ? 1 : 0
+
+  scope                = azurerm_container_registry.this[0].id
+  role_definition_name = "AcrPull"
+  principal_id         = module.aks.kubelet_identity_object_id
+}
+
+# One import per image. `input` carries the fully qualified source ref, so a
+# platform version bump replaces the resource and re-runs the import.
+resource "terraform_data" "image_import" {
+  for_each = local.create_acr ? local.platform_images : {}
+
+  input = each.value
+
+  provisioner "local-exec" {
+    environment = {
+      DOCKER_HUB_USERNAME = var.docker_hub_username
+      DOCKER_HUB_TOKEN    = var.docker_hub_token
+    }
+    # The image path is preserved on the mirror side so the chart's default
+    # image.repository keeps working with only the registry prefix changed.
+    # Runs under /bin/sh, so no arrays and no pipefail.
+    command = <<-EOT
+      set -eu
+      if [ -n "$DOCKER_HUB_USERNAME" ]; then
+        az acr import \
+          --name ${azurerm_container_registry.this[0].name} \
+          --source docker.io/${each.value} \
+          --image ${each.value} \
+          --username "$DOCKER_HUB_USERNAME" \
+          --password "$DOCKER_HUB_TOKEN" \
+          --only-show-errors \
+          --force
+      else
+        az acr import \
+          --name ${azurerm_container_registry.this[0].name} \
+          --source docker.io/${each.value} \
+          --image ${each.value} \
+          --only-show-errors \
+          --force
+      fi
+    EOT
+  }
+
+  depends_on = [azurerm_role_assignment.acr_pull]
+}
+
 module "noxus" {
   source = "../../../modules/platform/noxus-release"
 
@@ -235,16 +327,19 @@ module "noxus" {
     tls      = module.redis.tls
   }
 
-  # Blob Storage is reached through its S3-compatible endpoint, so the account
-  # name and access key stand in for the S3 credential pair.
+  # Blob Storage speaks no S3, so this uses the platform's native Azure client:
+  # BUCKET_CLIENT=azure, the account key as the credential, and the account name
+  # in place of the bucket — the client builds
+  # https://<SPOTFLOW_STORAGE_BUCKET>.blob.core.windows.net itself.
   storage = {
-    client            = "s3"
-    private_bucket    = module.storage.private_container
-    public_bucket     = module.storage.public_container
-    endpoint_url      = module.storage.blob_endpoint
-    access_key_id     = module.storage.account_name
-    secret_access_key = module.storage.access_key
+    client            = "azure"
+    private_bucket    = module.storage.account_name
+    public_bucket     = module.storage.account_name
+    azure_account_key = module.storage.access_key
   }
+
+  image_registry     = local.image_registry
+  image_pull_secrets = var.image_pull_secrets
 
   auth0 = var.auth0
 
@@ -275,5 +370,6 @@ module "noxus" {
   depends_on = [
     helm_release.ingress_nginx,
     helm_release.cert_manager,
+    terraform_data.image_import,
   ]
 }

@@ -163,6 +163,14 @@ kubectl get sa -n noxus noxus -o yaml
   `system:serviceaccount:<namespace>:<release_name>` exactly — a renamed release
   breaks it.
 
+### Storage reads and writes fail on Azure
+
+Blob Storage exposes no S3-compatible API, so `BUCKET_CLIENT=s3` with
+`S3_ENDPOINT_URL` pointed at `<account>.blob.core.windows.net` cannot work — the
+signing and request shape are both wrong. Use `BUCKET_CLIENT=azure` with
+`AZURE_STORAGE_ACCOUNT_KEY`, and set `SPOTFLOW_STORAGE_BUCKET` to the storage
+*account* name rather than a container name.
+
 ### Redis connection failures on Azure
 
 Azure Cache enforces TLS on 6380. Set `REDIS_PORT=6380` and `REDIS_SSL=true`.

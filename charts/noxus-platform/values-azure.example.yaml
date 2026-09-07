@@ -1,15 +1,19 @@
 # AKS example. Pair with terraform/stacks/kubernetes/azure-aks.
 #
-# Assumes: ingress-nginx + cert-manager installed, Workload Identity enabled, and a
-# user-assigned managed identity federated to the chart's ServiceAccount for Blob
-# Storage access.
+# Assumes: ingress-nginx + cert-manager installed, and the platform images
+# reachable — either mirrored into an ACR the kubelet identity can pull from
+# (set global.imageRegistry) or pulled from Docker Hub with an imagePullSecret.
 
 appVersion: "0.8.1"
 
 serviceAccount:
   create: true
-  annotations:
-    azure.workload.identity/client-id: 00000000-0000-0000-0000-000000000000
+
+# Mirror of the platform images. Leave empty to pull noxusai/noxus-np straight
+# from Docker Hub, which will not survive a scale-out.
+global:
+  imageRegistry: "noxusprodacr.azurecr.io"
+  imagePullSecrets: []
 
 env:
   ADMIN_EMAIL: admin@example.com
@@ -20,12 +24,13 @@ env:
   BACKEND_URL: https://api.noxus.example.com
   RELAY_URL: https://relay.noxus.example.com
 
-  # Azure Blob is consumed through its S3-compatible path; point S3_ENDPOINT_URL at
-  # the storage account and treat the access key as the S3 secret pair.
-  BUCKET_CLIENT: s3
-  S3_ENDPOINT_URL: https://noxusprod.blob.core.windows.net
-  SPOTFLOW_STORAGE_BUCKET: artifacts
-  SPOTFLOW_PUBLIC_STORAGE_BUCKET: artifacts-public
+  # Blob Storage exposes no S3 API, so use the platform's native Azure client.
+  # Both bucket vars are the storage ACCOUNT name, not container names: the
+  # client builds https://<account>.blob.core.windows.net and writes into a
+  # fixed "noxus" container.
+  BUCKET_CLIENT: azure
+  SPOTFLOW_STORAGE_BUCKET: noxusprod
+  SPOTFLOW_PUBLIC_STORAGE_BUCKET: noxusprod
 
 secrets:
   POSTGRESQL_URL: "noxus:CHANGEME@noxus-prod.postgres.database.azure.com:5432"
@@ -33,8 +38,7 @@ secrets:
   REDIS_URL: "noxus-prod.redis.cache.windows.net"
   REDIS_PASSWORD: CHANGEME
 
-  S3_ACCESS_KEY_ID: noxusprod
-  S3_SECRET_ACCESS_KEY: CHANGEME
+  AZURE_STORAGE_ACCOUNT_KEY: CHANGEME
 
   AUTH0_DOMAIN: tenant.eu.auth0.com
   AUTH0_ISSUER_BASE_URL: https://tenant.eu.auth0.com

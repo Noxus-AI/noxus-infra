@@ -101,10 +101,10 @@ under load. Run PgBouncer, which collapses it to the pooler's own backend pool.
 | Variable | Default | Notes |
 |----------|---------|-------|
 | `BUCKET_CLIENT` | `gcloud` | `s3`, `gcloud`, `minio`, or `azure`. |
-| `S3_ENDPOINT_URL` | `""` | Set for MinIO or Azure Blob's S3-compatible endpoint. Leave empty for real S3. |
+| `S3_ENDPOINT_URL` | `""` | Set for MinIO. Leave empty for real S3, and unset entirely on Azure — Blob Storage has no S3-compatible endpoint. |
 | `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | `""` | Omit when pods use IRSA / Workload Identity. |
 | `AWS_REGION` | `eu-west-1` | |
-| `AZURE_STORAGE_ACCOUNT_KEY` | `null` | Native Azure client path. |
+| `AZURE_STORAGE_ACCOUNT_KEY` | `null` | Credential for `BUCKET_CLIENT=azure`. On that path `SPOTFLOW_STORAGE_BUCKET` is the storage **account** name, not a container — the client builds `https://<account>.blob.core.windows.net` and writes into a fixed `noxus` container, so the private/public bucket split does not apply. |
 | `ARCHIVE_MODE` | `sync` | `sync`, `async`, or `disabled`. Controls when run state is pushed to cold storage. |
 | `ARCHIVE_BATCH_INTERVAL` | — | Batching window for `async` mode. |
 

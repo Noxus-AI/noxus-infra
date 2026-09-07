@@ -18,6 +18,29 @@ locals {
     RELAY_URL    = "https://relay.${var.domain}"
   }
 
+  # Azure Blob has no S3-compatible endpoint, so BUCKET_CLIENT=azure takes a
+  # different credential shape entirely: the account key, and the account name
+  # standing in for the bucket. Emitting the S3 pair alongside it would leave a
+  # stale endpoint URL pointing somewhere that does not speak S3.
+  storage_env = merge(
+    {
+      BUCKET_CLIENT                  = var.storage.client
+      SPOTFLOW_STORAGE_BUCKET        = var.storage.private_bucket
+      SPOTFLOW_PUBLIC_STORAGE_BUCKET = var.storage.public_bucket
+    },
+    var.storage.client == "azure" ? {} : {
+      S3_ENDPOINT_URL = var.storage.endpoint_url
+      AWS_REGION      = var.storage.region
+    },
+  )
+
+  storage_secrets = var.storage.client == "azure" ? {
+    AZURE_STORAGE_ACCOUNT_KEY = var.storage.azure_account_key
+    } : {
+    S3_ACCESS_KEY_ID     = var.storage.access_key_id
+    S3_SECRET_ACCESS_KEY = var.storage.secret_access_key
+  }
+
   base_env = merge(
     {
       ADMIN_EMAIL     = var.admin_email
@@ -27,15 +50,10 @@ locals {
       ON_PREM         = var.on_prem ? "true" : "false"
       LOG_LEVEL       = var.log_level
 
-      BUCKET_CLIENT                  = var.storage.client
-      SPOTFLOW_STORAGE_BUCKET        = var.storage.private_bucket
-      SPOTFLOW_PUBLIC_STORAGE_BUCKET = var.storage.public_bucket
-      S3_ENDPOINT_URL                = var.storage.endpoint_url
-      AWS_REGION                     = var.storage.region
-
       REDIS_PORT = tostring(var.redis.port)
       REDIS_SSL  = var.redis.tls ? "true" : ""
     },
+    local.storage_env,
     local.urls,
     var.extra_env,
   )
@@ -57,15 +75,18 @@ locals {
       AUTH0_SECRET             = coalesce(var.auth0.session_secret, random_password.auth0_session.result)
       AUTH0_MGMT_CLIENT_ID     = var.auth0.mgmt_client_id
       AUTH0_MGMT_CLIENT_SECRET = var.auth0.mgmt_client_secret
-
-      S3_ACCESS_KEY_ID     = var.storage.access_key_id
-      S3_SECRET_ACCESS_KEY = var.storage.secret_access_key
     },
+    local.storage_secrets,
     var.extra_secrets,
   )
 
   computed_values = {
     appVersion = var.app_version
+
+    global = {
+      imageRegistry    = var.image_registry
+      imagePullSecrets = [for name in var.image_pull_secrets : { name = name }]
+    }
 
     serviceAccount = {
       create      = true

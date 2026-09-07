@@ -92,7 +92,17 @@ variable "redis" {
 }
 
 variable "storage" {
-  description = "Object storage settings. client is \"s3\", \"gcloud\", or \"minio\". Leave the key pair empty when pods authenticate through a workload identity instead."
+  description = <<-EOT
+    Object storage settings. client is "s3", "gcloud", "minio", or "azure".
+
+    For "azure", private_bucket and public_bucket are the storage ACCOUNT name,
+    not container names: the platform's Azure client derives the blob endpoint
+    from SPOTFLOW_STORAGE_BUCKET and writes into a fixed "noxus" container.
+    azure_account_key is the account shared key.
+
+    For the S3-shaped clients, leave the key pair empty when pods authenticate
+    through a workload identity instead.
+  EOT
   type = object({
     client            = string
     private_bucket    = string
@@ -101,8 +111,26 @@ variable "storage" {
     endpoint_url      = optional(string, "")
     access_key_id     = optional(string, "")
     secret_access_key = optional(string, "")
+    azure_account_key = optional(string, "")
   })
   sensitive = true
+
+  validation {
+    condition     = contains(["s3", "gcloud", "minio", "azure"], var.storage.client)
+    error_message = "storage.client must be one of: s3, gcloud, minio, azure."
+  }
+}
+
+variable "image_registry" {
+  description = "Registry host prefixed to the platform image references, e.g. \"myacr.azurecr.io\". Empty pulls the repository as written, from Docker Hub."
+  type        = string
+  default     = ""
+}
+
+variable "image_pull_secrets" {
+  description = "Names of existing imagePullSecrets in the namespace. Not needed when the cluster's node identity holds pull rights (AcrPull, an ECR policy)."
+  type        = list(string)
+  default     = []
 }
 
 variable "auth0" {

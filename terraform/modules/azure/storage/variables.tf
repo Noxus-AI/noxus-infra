@@ -26,13 +26,13 @@ variable "replication_type" {
 }
 
 variable "private_container_name" {
-  description = "Container for run artifacts and uploads — set as env.SPOTFLOW_STORAGE_BUCKET."
+  description = "Container for run artifacts and uploads. With BUCKET_CLIENT=azure the platform writes into a fixed \"noxus\" container, so set this to that name to keep the container Terraform-managed."
   type        = string
   default     = "artifacts"
 }
 
 variable "public_container_name" {
-  description = "Container for whitelabel and integration assets — set as env.SPOTFLOW_PUBLIC_STORAGE_BUCKET."
+  description = "Container for whitelabel and integration assets. Only the S3-shaped clients address it separately; the native Azure client keeps everything in the private container."
   type        = string
   default     = "artifacts-public"
 }
