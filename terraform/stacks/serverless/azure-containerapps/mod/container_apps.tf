@@ -46,33 +46,35 @@ locals {
   relay_url    = var.domain != "" ? "https://relay.${var.domain}" : "https://relay.${local.default_domain}"
 
   env_vars = {
-    "ADMIN_EMAIL"                    = var.admin_email
-    "APP_BASE_URL"                   = local.frontend_url
-    "AUTH0_API_AUDIENCE"             = var.auth0_api_audience
-    "AUTH0_BASE_URL"                 = local.frontend_url
-    "AUTH0_CLIENT_ID"                = var.auth0_client_id
-    "AUTH0_DOMAIN"                   = var.auth0_domain
-    "AUTH0_ISSUER_BASE_URL"          = "https://${var.auth0_domain}"
-    "AUTH0_MGMT_CLIENT_ID"           = var.auth0_mgmt_client_id
-    "BACKEND_URL"                    = local.backend_url
-    "BILLING_ENABLED"                = "false"
-    "BUCKET_CLIENT"                  = "azure"
-    "DEPLOYMENT_ENV"                 = var.deployment_env
-    "FIRESTORE_PROJECT"              = var.firestore_project
-    "FRONTEND_URL"                   = local.frontend_url
-    "IS_PROD"                        = "true"
-    "NOLLM_CONFIG_PATH"              = "/code/configs"
-    "ON_PREM"                        = "true"
-    "REDIS_PORT"                     = tostring(azurerm_redis_cache.main.ssl_port)
-    "REDIS_SSL"                      = "true"
-    "REDIS_URL"                      = azurerm_redis_cache.main.hostname
-    "RELAY_URL"                      = local.relay_url
-    "SECRETS_SOURCE"                 = "db"
-    "SPOTFLOW_PUBLIC_STORAGE_BUCKET" = azurerm_storage_account.main.name
-    "SPOTFLOW_STORAGE_BUCKET"        = azurerm_storage_account.main.name
-    "VERSION"                        = var.vm_version
-    "VERTEX_PROJECT_ID"              = var.vertex_project_id
-    "WHITELABEL_LOGO"                = var.whitelabel_logo
+    "ADMIN_EMAIL"                     = var.admin_email
+    "APP_BASE_URL"                    = local.frontend_url
+    "AUTH0_API_AUDIENCE"              = var.auth0_api_audience
+    "AUTH0_BASE_URL"                  = local.frontend_url
+    "AUTH0_CLIENT_ID"                 = var.auth0_client_id
+    "AUTH0_DOMAIN"                    = var.auth0_domain
+    "AUTH0_ISSUER_BASE_URL"           = "https://${var.auth0_domain}"
+    "AUTH0_MGMT_CLIENT_ID"            = var.auth0_mgmt_client_id
+    "BACKEND_URL"                     = local.backend_url
+    "BILLING_ENABLED"                 = "false"
+    "BUCKET_CLIENT"                   = "azure"
+    "DEPLOYMENT_ENV"                  = var.deployment_env
+    "FIRESTORE_PROJECT"               = var.firestore_project
+    "FRONTEND_URL"                    = local.frontend_url
+    "IS_PROD"                         = "true"
+    "NOLLM_CONFIG_PATH"               = "/code/configs"
+    "ON_PREM"                         = "true"
+    "PLATFORM_HEALTH_RELAY_ENABLED"   = "true"
+    "PLATFORM_HEALTH_SANDBOX_ENABLED" = "false"
+    "REDIS_PORT"                      = tostring(azurerm_redis_cache.main.ssl_port)
+    "REDIS_SSL"                       = "true"
+    "REDIS_URL"                       = azurerm_redis_cache.main.hostname
+    "RELAY_URL"                       = local.relay_url
+    "SECRETS_SOURCE"                  = "db"
+    "SPOTFLOW_PUBLIC_STORAGE_BUCKET"  = azurerm_storage_account.main.name
+    "SPOTFLOW_STORAGE_BUCKET"         = azurerm_storage_account.main.name
+    "VERSION"                         = var.vm_version
+    "VERTEX_PROJECT_ID"               = var.vertex_project_id
+    "WHITELABEL_LOGO"                 = var.whitelabel_logo
   }
 
   # Only the backend entrypoint runs migrations and the first-boot bootstrap.

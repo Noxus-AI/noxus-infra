@@ -58,6 +58,9 @@ jobs:
       - name: lint
         run: helm lint charts/noxus-platform -f charts/noxus-platform/ci/minimal-values.yaml
 
+      - name: platform health defaults
+        run: python3 charts/noxus-platform/tests/test_platform_health.py
+
       - name: render
         run: |
           set -euo pipefail
