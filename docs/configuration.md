@@ -131,6 +131,27 @@ under load. Run PgBouncer, which collapses it to the pooler's own backend pool.
 
 ## Observability
 
+### Platform health
+
+The worker uses deployment defaults to decide whether to probe optional services.
+An intentionally absent service is skipped. An expected service that is
+unreachable fails its check.
+
+| Variable | When unset | Deployment default |
+|----------|------------|--------------------|
+| `PLATFORM_HEALTH_RELAY_ENABLED` | Relay is expected. | Helm uses `relay.enabled`; Cloud Run and Container Apps set `true`. |
+| `PLATFORM_HEALTH_SANDBOX_ENABLED` | Sandbox is expected when `SANDBOX_MANAGER_URL` is nonempty. | Helm uses `sandbox.enabled` or a nonempty `SANDBOX_MANAGER_URL`; Cloud Run and Container Apps set `false`. |
+
+Both variables accept `true` or `false`. For these flags, Helm gives `secrets`
+precedence over `extraEnv`, then `env`, including boolean `false`. Set them
+explicitly when using an external optional service that differs from the
+deployed topology. The
+administrator's `health_checks.relay.enabled` and `health_checks.sandbox.enabled`
+configuration takes precedence over these defaults. Older deployments that omit
+the variables keep the behavior in the "When unset" column.
+
+### Logging and tracing
+
 | Variable | Default | Notes |
 |----------|---------|-------|
 | `LOG_LEVEL` | `INFO` | **`DEBUG` logs prompt and tool-call content.** Treat that log stream as sensitive data. |
