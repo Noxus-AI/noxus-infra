@@ -29,7 +29,8 @@ Auth0 refuses non-HTTPS callback URLs, so TLS is not optional.
 | `aws-eks` | ACM certificate for `<domain>` + `*.<domain>`, DNS-validated via Route53, attached to the ALB |
 | `gcp-gke` | Google-managed certificate covering all three hostnames, referenced as a pre-shared cert |
 | `azure-aks` | cert-manager with a Let's Encrypt HTTP-01 issuer, through ingress-nginx |
-| Serverless | Managed certificates on the container platform's domain mapping |
+| `gcp-cloudrun` | Google-managed certificate for the single `<domain>` on an external Application Load Balancer; the frontend proxies the API and relay paths |
+| `azure-containerapps` | Managed certificates on the Container Apps custom domains |
 | VM | Self-signed by default; `marketplace/azure-vm/cert.sh` swaps in a real one |
 
 ### The GCP ordering trap

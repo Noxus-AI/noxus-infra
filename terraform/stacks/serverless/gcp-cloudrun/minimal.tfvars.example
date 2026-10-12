@@ -1,0 +1,13 @@
+# Smallest working input: no domain, so the platform answers on the frontend's
+# run.app URL and no load balancer or DNS is involved. Useful to stand the
+# platform up while a domain is still being arranged; add `domain` later and
+# apply again.
+
+project_id    = "my-gcp-project"
+region        = "europe-west2"
+admin_email   = "admin@example.com"
+noxus_version = "1.9.2"
+
+auth0_client_id     = "CHANGEME"
+auth0_client_secret = "CHANGEME"
+docker_hub_token    = "CHANGEME"

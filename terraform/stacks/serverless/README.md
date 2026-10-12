@@ -36,26 +36,18 @@ If knowledge-base ingestion is central to your workload, use Kubernetes.
 |---------|-------|:--:|:--:|-------|
 | backend | Request-scaled | ✓ | ✓ | Serves the API and the MCP endpoint at `/mcp` |
 | frontend | Request-scaled | ✓ | ✓ | |
-| worker | Always-on | ✓ | ✓ | Polls the job queue |
+| worker | Always-on | ✓ | ✓ | Polls the job queue and runs scheduled jobs |
 | relay | Request-scaled | ✓ | ✓ | Only when integration channels are used |
-| beat | Always-on, single instance | ✓ | — | Scheduled jobs. **Must not scale past 1** — duplicate schedulers double-enqueue |
+| sandbox | Always-on, single instance | ✓ | ✗ | Plugins, isolated Run Code, browser automation |
 
-<!-- The beat gap is real, not an oversight in this table: the Azure stack
-     deploys four container apps and none of them overrides the worker
-     entrypoint, so nothing runs the scheduler. -->
+There is no separate scheduler. Periodic jobs (polling triggers, scheduled
+runs, maintenance) run inside the worker. A `beat` service running
+`beat_start.sh`, from older versions of these stacks, exits on start because
+the script no longer exists. Remove it.
 
-> **The Azure stack has no scheduler.** Cloud Run runs `beat` as a fifth service
-> (the worker image with `beat_start.sh` as its command). Container Apps does
-> not, so anything time-driven — polling triggers, scheduled workflow runs,
-> periodic maintenance jobs — will not fire there. Event-driven and
-> user-initiated work is unaffected.
->
-> If you need scheduled work on Azure today, either add a fifth container app
-> running the worker image with that command and `min_replicas = max_replicas = 1`,
-> or use the [Kubernetes](../kubernetes/azure-aks) path, where the chart handles it.
-
-Neither stack deploys the **Agent Sandbox**, which is required for plugins and
-for isolated Run Code execution. See [docs/architecture.md](../../../docs/architecture.md).
+The Azure stack does not deploy the **Agent Sandbox**, which is required for
+plugins and for isolated Run Code execution. See
+[docs/architecture.md](../../../docs/architecture.md).
 
 ## Common configuration
 
