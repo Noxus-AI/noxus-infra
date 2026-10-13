@@ -1,20 +1,62 @@
-project_id = "my-gcp-project"
-region     = "europe-west1"
-zone       = "europe-west1-b"
+# Copy to terraform.tfvars and fill in. *.tfvars is gitignored: this file holds
+# credentials once filled.
 
-domain          = "noxus.example.com"
-admin_email     = "admin@example.com"
-whitelabel_logo = ""
-deployment_env  = "prod"
+# ------------------------------------------------------------- required ---
 
-# Platform version. Selects the image tags pulled through the Artifact Registry
-# remote repository.
-vm_version = "0.8.1"
+project_id  = "my-gcp-project"
+region      = "europe-west2"
+admin_email = "admin@example.com"
 
-docker_hub_token = "CHANGEME"
+# Platform release. Noxus ships a minor release every two weeks.
+noxus_version = "1.9.2"
 
-# No defaults — supply your own Auth0 tenant's application.
-auth0_domain        = "tenant.eu.auth0.com"
-auth0_api_audience  = "https://api.noxus.example.com"
+# From Noxus: a dedicated application on the Noxus Auth0 tenant.
 auth0_client_id     = "CHANGEME"
 auth0_client_secret = "CHANGEME"
+
+# From Noxus: pulls the private noxusai images. Not needed with image_registry.
+docker_hub_token = "CHANGEME"
+
+# -------------------------------------------------------------- ingress ---
+
+# With a domain: HTTPS load balancer, managed certificate, one A record.
+# Without: the frontend answers on its run.app URL (see the `url` output).
+domain = "noxus.example.com"
+
+# Cloud DNS zone in this project that holds the domain. Set it and the A record
+# is created for you; leave it out and create it from `required_dns_records`.
+# dns_managed_zone = "example-com"
+
+# ------------------------------------------------------------- optional ---
+
+# Auth0 Management API access. Leave unset on the Noxus tenant: the credentials
+# are tenant-wide, and SSO works without them (README, "Single sign-on").
+# auth0_mgmt_client_id     = ""
+# auth0_mgmt_client_secret = ""
+
+# Images already mirrored into your own registry. Replaces the remote
+# repository this stack creates, and docker_hub_token.
+# image_registry = "europe-west2-docker.pkg.dev/my-project/mirror/noxusai"
+
+# Deploy into an existing VPC instead of creating one. It needs Private Service
+# Access, Private Google Access on the subnet, and a route to the internet.
+# network    = "projects/host-project/global/networks/shared-vpc"
+# subnetwork = "projects/host-project/regions/europe-west2/subnetworks/apps"
+
+# labels = { cost-centre = "1234", environment = "poc" }
+
+# Sizing. Anything left out keeps its default (see variables.tf).
+# database             = { tier = "db-custom-2-8192", disk_size_gb = 50 }
+# redis_memory_size_gb = 1
+# worker               = { cpu = "4", memory = "8Gi" }
+
+# deploy_sandbox   = true
+# sandbox_provider = "gvisor"
+
+# Extra platform settings. Not for secrets.
+# extra_env = {
+#   USE_NCS = "false"   # no calls to the Noxus control service
+# }
+
+# Set to false before `tofu destroy`.
+# deletion_protection = true

@@ -117,11 +117,10 @@ Errors go to Sentry via `SENTRY_URL`.
 | Path | Used by | Meaning |
 |------|---------|---------|
 | `/status/health` | Liveness and readiness on backend, worker, relay | Process is up and can reach its dependencies |
-| `/status/test-task` | Deeper worker liveness | The worker can actually execute a job — catches a worker that is running but not consuming |
 | `/health` | Sandbox | Sandbox manager is up |
 
 The chart uses `tcpSocket` for frontend probes because Next.js has no cheap
 health route worth polling.
 
-`/status/test-task` is the more useful worker signal: a worker whose queue
-subscription is broken still answers `/status/health` happily.
+The worker no longer serves `/status/test-task`. A probe still pointing at it
+gets a 404 and restarts the worker in a loop.

@@ -1,108 +1,50 @@
-variable "project_id" {
-  description = "The GCP project ID where resources will be created."
-  type        = string
+data "google_project" "this" {
+  project_id = var.project_id
 }
 
-variable "region" {
-  description = "The GCP region for regional resources."
-  type        = string
+resource "random_id" "suffix" {
+  byte_length = 3
 }
 
-variable "zone" {
-  description = "The GCP zone for zonal resources."
-  type        = string
-}
+locals {
+  prefix = var.name_prefix
+  labels = merge({ app = "noxus", deployment = var.name_prefix }, var.labels)
 
-variable "domain" {
-  description = "The domain name for SSL certificates and other configurations."
-  type        = string
-}
+  use_load_balancer = var.domain != ""
+  create_network    = var.network == ""
+  create_registry   = var.image_registry == ""
 
-variable "admin_email" {
-  description = "Your admin email."
-  type        = string
-}
+  network_id    = local.create_network ? google_compute_network.main[0].id : var.network
+  subnetwork_id = local.create_network ? google_compute_subnetwork.main[0].id : var.subnetwork
 
-variable "whitelabel_logo" {
-  description = "The URL or path to the whitelabel logo."
-  type        = string
-}
+  services = {
+    backend  = "${local.prefix}-backend"
+    frontend = "${local.prefix}-frontend"
+    worker   = "${local.prefix}-worker"
+    relay    = "${local.prefix}-relay"
+    sandbox  = "${local.prefix}-sandbox"
+  }
 
-variable "goog_cm_deployment_name" {
-  description = "The name of the deployment."
-  type        = string
-  default     = "cloudrun"
-}
+  # Cloud Run's deterministic URLs. Computing them instead of reading `.uri`
+  # lets services reference each other, including themselves, without a cycle.
+  internal_url = {
+    for key, name in local.services :
+    key => "https://${name}-${data.google_project.this.number}.${var.region}.run.app"
+  }
 
-variable "deployment_env" {
-  description = "Deployment environment"
-  type        = string
-  default     = "prod"
-}
+  public_url = local.use_load_balancer ? "https://${var.domain}" : local.internal_url.frontend
 
-variable "vm_version" {
-  description = "The version of the deployment."
-  type        = string
-  default     = "ec09562-20250321T143742"
-}
+  # The browser only ever talks to the frontend. It proxies /api/backend/* to
+  # the backend and /api/relay/* to the relay, so one hostname serves the app,
+  # the API and inbound webhooks.
+  backend_public_url = "${local.public_url}/api/backend"
+  relay_public_url   = "${local.public_url}/api/relay"
 
-variable "docker_hub_token" {
-  type        = string
-  sensitive   = true
-  description = "Docker Hub token for authentication"
-}
+  image_prefix = (
+    local.create_registry
+    ? "${var.region}-docker.pkg.dev/${var.project_id}/${local.prefix}-images/noxusai"
+    : trimsuffix(var.image_registry, "/")
+  )
 
-variable "auth0_domain" {
-  description = "Auth0 tenant domain, e.g. tenant.eu.auth0.com."
-  type        = string
-}
-
-variable "auth0_api_audience" {
-  description = "Auth0 API audience identifier."
-  type        = string
-}
-
-variable "auth0_client_id" {
-  description = "Auth0 application client ID."
-  type        = string
-}
-
-variable "auth0_client_secret" {
-  description = "Auth0 application client secret."
-  type        = string
-  sensitive   = true
-}
-
-module "deploy" {
-  source                  = "./mod"
-  project_id              = var.project_id
-  region                  = var.region
-  zone                    = var.zone
-  domain                  = var.domain
-  admin_email             = var.admin_email
-  whitelabel_logo         = var.whitelabel_logo
-  goog_cm_deployment_name = var.goog_cm_deployment_name
-  vm_version              = var.vm_version
-  deployment_env          = var.deployment_env
-  docker_hub_token        = var.docker_hub_token
-
-  auth0_domain        = var.auth0_domain
-  auth0_api_audience  = var.auth0_api_audience
-  auth0_client_id     = var.auth0_client_id
-  auth0_client_secret = var.auth0_client_secret
-}
-
-output "backend_dns" {
-  value       = module.deploy.backend_dns
-  description = "The public dns to add for the backend"
-}
-
-output "frontend_dns" {
-  value       = module.deploy.frontend_dns
-  description = "The public dns to add for the frontend"
-}
-
-output "relay_dns" {
-  value       = module.deploy.relay_dns
-  description = "The public dns to add for the relay"
+  sandbox_network_tag = "${local.prefix}-sandbox"
 }
