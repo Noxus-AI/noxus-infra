@@ -43,9 +43,10 @@ Every service is pinned to a fixed instance count, and nothing scales to zero.
 
 **On your side**
 
-- A GCP project, and `tofu` ≥ 1.5 or `terraform` ≥ 1.5 authenticated with `gcloud auth application-default login`.
+- A GCP project with billing enabled.
+- The [gcloud CLI](https://cloud.google.com/sdk/docs/install) and
+  [OpenTofu](https://opentofu.org/docs/intro/install/) ≥ 1.5 (Terraform ≥ 1.5 works too).
 - A domain you control, if you want one. A Cloud DNS zone for it in the same project lets the stack create the record.
-- A bucket for state (see `backend.tf`). State holds the database password and every generated key.
 
 **Permissions for whoever runs `apply`.** Project Owner covers everything. Otherwise:
 
@@ -76,11 +77,38 @@ The stack grants nothing to `allUsers`, so domain-restricted sharing does not af
 
 ## Deploy
 
+**1. Prepare the project** (once). The stack enables every API it uses, but
+reading the project before that needs two of them already on, and local
+credentials need a project to bill API calls to.
+
+```sh
+PROJECT=my-gcp-project
+REGION=europe-west2
+
+gcloud auth login
+gcloud auth application-default login
+gcloud auth application-default set-quota-project "$PROJECT"
+gcloud services enable cloudresourcemanager.googleapis.com serviceusage.googleapis.com --project "$PROJECT"
+```
+
+**2. Create a bucket for state.** State holds the database password and every
+generated key, so keep it private and versioned. For a throwaway evaluation you
+can delete `backend.tf` instead and keep state on your machine.
+
+```sh
+gcloud storage buckets create "gs://$PROJECT-tfstate" --project "$PROJECT" \
+  --location "$REGION" --uniform-bucket-level-access --public-access-prevention
+gcloud storage buckets update "gs://$PROJECT-tfstate" --versioning
+```
+
+**3. Fill in the variables and apply.** `terraform.tfvars.example` lists every
+input with comments; `minimal.tfvars.example` is the smallest working set.
+
 ```sh
 cp terraform.tfvars.example terraform.tfvars    # fill it in
 
 tofu init \
-  -backend-config="bucket=my-tfstate" \
+  -backend-config="bucket=$PROJECT-tfstate" \
   -backend-config="prefix=noxus/cloudrun"
 
 tofu plan
@@ -89,9 +117,11 @@ tofu apply
 
 The first apply is slow. Cloud SQL takes a while to create, and the backend's
 first boot applies the whole database schema before it reports healthy. The
-worker, relay and frontend wait for it.
+worker, relay and frontend wait for it. `tofu apply` only returns once every
+service has passed its health check, so a clean finish means the platform is
+running. If it fails, see [Troubleshooting](#troubleshooting).
 
-Then:
+**4. Then:**
 
 1. **DNS.** Unless `dns_managed_zone` is set, create the A record from
    `tofu output required_dns_records`. The certificate only issues once the
@@ -120,8 +150,9 @@ the VPC beyond the Auth0 domain.
 - An enterprise connection to your identity provider, as SAML or OpenID
   Connect, enabled for this application only.
 - The `Username-Password-Authentication` connection on the same application,
-  with the Password and Refresh Token grants. The platform's own login form
-  uses it for the first admin, until SSO is confirmed working.
+  with the Password and Refresh Token grants, and sign-ups allowed (or the
+  admin's user created in advance). The platform's own login form uses it for
+  the first admin, until SSO is confirmed working.
 
 **Your admin then, in the platform's authentication settings:**
 
@@ -190,11 +221,84 @@ Everything is in [`variables.tf`](variables.tf). The ones you are likely to touc
 | `extra_env` | `{}` | Any other platform setting |
 | `deletion_protection` | `true` | Database and bucket protection |
 
-Platform settings are described in
-[docs/configuration.md](../../../../docs/configuration.md). The stack sets the ones
-a deployment needs and generates `AUTH0_SECRET`, `ADMIN_API_KEY` and
-`CREDENTIAL_ENCRYPTION_KEY`. All three are stored in Secret Manager. Keep
-the state: the encryption key protects every stored integration credential.
+The stack generates `AUTH0_SECRET`, `ADMIN_API_KEY` and
+`CREDENTIAL_ENCRYPTION_KEY` and stores them in Secret Manager. Keep the state:
+the encryption key protects every stored integration credential.
+
+## Environment variables
+
+This is the complete set the stack gives each service, and the minimum a Cloud
+Run deployment needs. It is also a checklist for anyone wiring the services by
+hand. Everything else keeps the platform default; see
+[docs/configuration.md](../../../../docs/configuration.md) for the full
+reference. `extra_env` adds to or overrides the plain variables on the backend,
+worker, relay and frontend.
+
+**Backend, worker and relay**
+
+| Variable | Value | Without it |
+|---|---|---|
+| `DEPLOYMENT_ENV` | `deployment_env` (`prod`) | The service does not start |
+| `ON_PREM` | `true` | Features that assume Noxus-hosted services stay on; no deployment registration |
+| `IS_PROD` | `true` | Requests without a token are not rejected; no error reporting |
+| `BILLING_ENABLED` | `false` | SaaS billing switches on (the default is `true`) |
+| `SECRETS_SOURCE` | `db` | The service does not start: the default, `file`, reads a vault file the images do not contain |
+| `ADMIN_EMAIL` | `admin_email` | First boot creates no tenant, so nobody can log in |
+| `FRONTEND_URL` | the `url` output | The service does not start |
+| `BACKEND_URL` | `<url>/api/backend` | The service does not start |
+| `RELAY_URL` | `<url>/api/relay` | Webhook URLs given to Slack, Teams, Telegram and others point at an internal default |
+| `MCP_SERVER_URL` | backend's internal URL + `/mcp/` | Agents call the Noxus MCP server through the frontend's proxy, which is built for browser sessions |
+| `AUTH0_DOMAIN` | `auth0_domain` | The backend does not start |
+| `AUTH0_ISSUER_BASE_URL` | `https://<auth0_domain>` | The frontend's connection lookup fails |
+| `AUTH0_API_AUDIENCE`, `AUTH0_CLIENT_ID` | from the variables | No login |
+| `AUTH0_BASE_URL`, `APP_BASE_URL` | the `url` output | No login |
+| `AUTH0_MGMT_CLIENT_ID` | `auth0_mgmt_client_id`, normally empty | See [Single sign-on](#single-sign-on) |
+| `REDIS_URL` | Memorystore host, no scheme or port | The service does not start |
+| `BUCKET_CLIENT` | `gcloud` | |
+| `SPOTFLOW_STORAGE_BUCKET`, `SPOTFLOW_PUBLIC_STORAGE_BUCKET` | the platform bucket | The service does not start |
+| `VERTEX_PROJECT_ID` | `project_id` | No models |
+| `SANDBOX_MANAGER_URL`, `USE_REMOTE_SANDBOX=true` | sandbox's internal URL | With the sandbox only. No plugins or browser features, and Run Code runs on the worker |
+| `PLATFORM_HEALTH_SANDBOX_ENABLED=false` | | Without the sandbox only: the status page reports a sandbox that does not exist as down |
+| `WHITELABEL_LOGO` | `whitelabel_logo` | Only when set |
+
+From Secret Manager:
+
+| Variable | Value | Without it |
+|---|---|---|
+| `POSTGRESQL_URL`, `VECTOR_POSTGRESQL_URL` | `noxus:<password>@<private IP>:5432`, no scheme and no database name | The service does not start |
+| `AUTH0_CLIENT_SECRET` | `auth0_client_secret` | No login |
+| `AUTH0_SECRET` | generated | No login. Changing it signs everyone out |
+| `ADMIN_API_KEY` | generated | Falls back to a published key that grants admin on the backend; the platform then refuses to use the sandbox |
+| `CREDENTIAL_ENCRYPTION_KEY` | generated, or `credential_encryption_key` | Integration credentials are stored unencrypted |
+| `AUTH0_MGMT_CLIENT_SECRET` | `auth0_mgmt_client_secret` | Only with `auth0_mgmt_client_id` |
+
+**Backend only**
+
+| Variable | Value | Without it |
+|---|---|---|
+| `RUN_MIGRATIONS` | `1` | No schema |
+| `RUN_BOOTSTRAP` | `1` | No first tenant |
+| `NOXUS_BACKEND_URL` | `http://localhost:8080` | The Noxus MCP tools call the backend's public address and are refused |
+
+**Frontend.** The same plain variables, except that `BACKEND_URL` and
+`RELAY_URL` are the backend's and the relay's internal URLs, which its server
+proxies to. Of the secrets it gets only `AUTH0_CLIENT_SECRET` and
+`AUTH0_SECRET`. It needs the rest of the plain set because it passes `ON_PREM`,
+`FRONTEND_URL` and whether plugins exist (`SANDBOX_MANAGER_URL`) to the
+browser.
+
+**Sandbox.** Deliberately minimal, since it runs untrusted code:
+
+| Variable | Value | Without it |
+|---|---|---|
+| `DEPLOYMENT_ENV` | `deployment_env` | |
+| `SECRETS_SOURCE` | `env` | |
+| `SANDBOX_PROVIDER` | `sandbox_provider` | The platform default, `syd` |
+| `BUCKET_CLIENT` | `gcloud` | |
+| `SPOTFLOW_STORAGE_BUCKET`, `SPOTFLOW_PUBLIC_STORAGE_BUCKET` | the sandbox bucket | |
+| `SANDBOX_FS_ENABLED`, `SANDBOX_FS_PREFIX`, `SANDBOX_FS_SYNC_INTERVAL` | `true`, `sandboxes`, `300` | Persistent sandboxes (agent workspaces, installed plugins) are lost on every restart |
+| `EXTERNAL_BASE_URL` | its own internal URL | Plugins cannot connect: the sandbox hands out `localhost` addresses |
+| `ADMIN_API_KEY` | from Secret Manager | Its control plane accepts the published default key, and the platform refuses to use it |
 
 ## Upgrading
 
@@ -209,6 +313,30 @@ skipping several releases.
 tofu apply
 tofu destroy
 ```
+
+## Troubleshooting
+
+Service logs:
+
+```sh
+gcloud logging read \
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="noxus-backend"' \
+  --project "$PROJECT" --limit 100 --format 'value(timestamp,textPayload)'
+```
+
+| Symptom | Usual cause |
+|---|---|
+| `plan` fails saying the Cloud Resource Manager API is disabled, or asks for a quota project | Step 1 of [Deploy](#deploy) was skipped |
+| An organisation policy error during `apply` | See [the policies above](#what-you-need-first) |
+| A service fails to start with an image pull error | Wrong `docker_hub_token` or `docker_hub_username`, or a `noxus_version` that does not exist |
+| `apply` waits on the backend and then fails, and its log stops after `[mcp-registry] generated ... MCP integration classes` | The backend cannot reach the Auth0 domain. Open egress to it ([Network access](#network-access)) |
+| The backend restarts during its first boot | The startup probe allows 15 minutes for the first migration. Look for a database error earlier in the log |
+| HTTPS handshake error on the domain | The certificate is still provisioning. Check the DNS record, then `gcloud compute ssl-certificates describe noxus-cert --global --format 'value(managed.status)'` |
+| Auth0 shows "Callback URL mismatch" | The URLs in `tofu output auth0_application_settings` are not allowed on the application yet |
+| The login form says "This login method is not configured" | The Password grant is not enabled on the Auth0 application |
+| No SSO button on the login page | The connection is not yet in the platform's authentication settings ([Single sign-on](#single-sign-on)) |
+
+Resource names above assume the default `name_prefix` of `noxus`.
 
 ## Design notes
 
