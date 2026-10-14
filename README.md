@@ -34,11 +34,14 @@ version, including the failure modes each mode has.
 
 Every stack needs the same four things before you begin:
 
-1. **A domain** you control DNS for. The platform serves three hostnames:
-   `<domain>`, `api.<domain>`, and `relay.<domain>`.
-2. **An Auth0 tenant** with an application configured for the domain above.
-3. **Registry credentials** for the platform images.
-4. **A platform version** to deploy, e.g. `0.8.1`.
+1. **A domain** you control DNS for. The Kubernetes stacks serve three
+   hostnames: `<domain>`, `api.<domain>`, and `relay.<domain>`. The Cloud Run
+   stack serves everything from `<domain>`, and can start on its `run.app`
+   address before you have one.
+2. **An Auth0 application** for that domain, provided by Noxus on its tenant
+   or created on your own.
+3. **Registry credentials** for the platform images, provided by Noxus.
+4. **A platform version** to deploy, e.g. `1.9.2`.
 
 Then, for a Kubernetes deployment on AWS:
 
@@ -63,6 +66,12 @@ PGPASSWORD=$(tofu output -raw postgres_password) \
 
 RDS is private, so run that from a bastion or a pod inside the VPC. The
 equivalent commands for GCP and Azure are in each stack's README.
+
+Every other stack has its own walkthrough in its directory's README. For Google
+Cloud Run, follow
+[terraform/stacks/serverless/gcp-cloudrun](terraform/stacks/serverless/gcp-cloudrun/README.md).
+There, the backend creates its databases and extensions itself, so nothing
+needs running after `apply`.
 
 ## Documentation
 

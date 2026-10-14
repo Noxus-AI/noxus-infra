@@ -20,6 +20,11 @@ integration.
 The `terraform/modules/platform/noxus-release` module derives the env vars from
 the same `domain` input as the ingress, so the two cannot drift.
 
+The Cloud Run stack needs only `<domain>`. The frontend proxies the API at
+`/api/backend` and the webhook receivers at `/api/relay`, so `BACKEND_URL` and
+`RELAY_URL` are `https://<domain>/api/backend` and `https://<domain>/api/relay`,
+and the backend and relay accept traffic from inside the VPC only.
+
 ## TLS
 
 Auth0 refuses non-HTTPS callback URLs, so TLS is not optional.
